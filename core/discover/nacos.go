@@ -82,6 +82,20 @@ func (s *nacosDiscover) GetAvailableInstances() ([]Instance, error) {
 	}), nil
 }
 
+func (s *nacosDiscover) UpdateInstance(i Instance) error {
+	_, err := s.nacosClient.UpdateInstance(vo.UpdateInstanceParam{
+		Ip:          i.Ip,
+		Port:        uint64(i.Port),
+		ServiceName: s.serviceName,
+		GroupName:   s.groupName,
+		ClusterName: s.clusterName,
+		Weight:      1,
+		Enable:      i.Enable,
+		Metadata:    i.Metadata,
+	})
+	return err
+}
+
 func (s *nacosDiscover) Subscribe(callback func(services []Instance, err error)) error {
 	return s.nacosClient.Subscribe(&vo.SubscribeParam{
 		ServiceName: s.serviceName,

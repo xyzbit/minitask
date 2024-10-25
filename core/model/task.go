@@ -9,8 +9,9 @@ type Task struct {
 	BizType   string
 	Type      string
 	Payload   string
-	Tags      *string
-	Extra     *string
+	Labels    map[string]string
+	Staints   map[string]string
+	Extra     map[string]string
 	Status    TaskStatus
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -19,6 +19,11 @@ const (
 	TaskStatusWaitStop       TaskStatus = "wait_stopped"
 	TaskStatusSuccess        TaskStatus = "success"
 	TaskStatusFailed         TaskStatus = "failed"
+
+	// 调度异常
+	TaskStatusExecptionRun   TaskStatus = "execption_run"
+	TaskStatusExecptionPause TaskStatus = "execption_pause"
+	TaskStatusExecptionStop  TaskStatus = "execption_stop"
 )
 
 func (ts TaskStatus) String() string {
@@ -29,12 +34,16 @@ func (ts TaskStatus) IsWaitStatus() bool {
 	return strings.HasPrefix(ts.String(), "wait_")
 }
 
+func (ts TaskStatus) IsExecptionStatus() bool {
+	return strings.HasPrefix(ts.String(), "execption_")
+}
+
 func (ts TaskStatus) IsFinalStatus() bool {
 	return ts == TaskStatusSuccess || ts == TaskStatusFailed
 }
 
 func (ts TaskStatus) CanTransition(nextStatus TaskStatus) error {
-	_, err := GetTaskStatusTransitionFuncID(ts, nextStatus)
+	_, err := GetTaskStatusTransitionFunc(ts, nextStatus)
 	return err
 }
 
@@ -59,7 +68,7 @@ func RegisterTransitionFunc(from, to TaskStatus, fn TransitionFunc) {
 	transitionFuncsMap[from][to] = fn
 }
 
-func GetTaskStatusTransitionFuncID(
+func GetTaskStatusTransitionFunc(
 	realRunStatus, wantRunStatus TaskStatus,
 ) (TransitionFunc, error) {
 	m, ok := transitionFuncsMap[realRunStatus]

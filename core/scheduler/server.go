@@ -25,7 +25,7 @@ func (s *HttpServer) CreateTask(c *gin.Context) {
 	}
 	log.Printf("assign task: %+v", req)
 
-	if err := s.scheduler.CreateTask(&model.Task{
+	if err := s.scheduler.CreateTask(c.Request.Context(), &model.Task{
 		BizID:   req.BizID,
 		BizType: req.BizType,
 		Type:    req.Type,
@@ -48,7 +48,7 @@ func (s *HttpServer) OperateTask(c *gin.Context) {
 		return
 	}
 
-	if err := s.scheduler.OperateTask(req.TaskKey, model.TaskStatus(req.Status)); err != nil {
+	if err := s.scheduler.OperateTask(c.Request.Context(), req.TaskKey, model.TaskStatus(req.Status)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

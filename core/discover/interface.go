@@ -11,6 +11,7 @@ type Instance struct {
 
 type Interface interface {
 	GetAvailableInstances() ([]Instance, error)
+	UpdateInstance(Instance) error
 	Subscribe(callback func(services []Instance, err error)) error
 	Register(i Instance) (bool, error)
 	UnRegister(i Instance) (bool, error)

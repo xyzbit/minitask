@@ -1,8 +1,11 @@
 package mysql
 
 import (
+	"context"
 	"errors"
+	"time"
 
+	"github.com/samber/lo"
 	"github.com/xyzbit/minitaskx/core/model"
 	"github.com/xyzbit/minitaskx/core/taskrepo"
 	"gorm.io/gorm"
@@ -18,43 +21,92 @@ func NewTaskRepo(db *gorm.DB) taskrepo.Interface {
 	}
 }
 
-func (t *taskRepoImpl) CreateTaskTX(task *model.Task, taskRun *model.TaskRun) error {
-	return t.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(task).Error; err != nil {
+func (t *taskRepoImpl) CreateTaskTX(ctx context.Context, task *model.Task, taskRun *model.TaskRun) error {
+	taskPo := FromTaskModel(task)
+	taskRunPo := FromTaskRunModel(taskRun)
+
+	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(taskPo).Error; err != nil {
 			return err
 		}
-		return tx.Create(taskRun).Error
+		return tx.Create(taskRunPo).Error
 	})
 }
 
-func (t *taskRepoImpl) UpdateTaskTX(task *model.Task, taskRun *model.TaskRun) error {
+func (t *taskRepoImpl) UpdateTaskTX(ctx context.Context, task *model.Task, taskRun *model.TaskRun) error {
 	if task.TaskKey == "" {
 		return errors.New("task key is empty")
 	}
-	return t.db.Transaction(func(tx *gorm.DB) error {
+
+	taskPo := FromTaskModel(task)
+	taskRunPo := FromTaskRunModel(taskRun)
+	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.Task{}).
 			Where("task_key = ?", task.TaskKey).
-			Updates(&task).Error; err != nil {
+			Updates(&taskPo).Error; err != nil {
 			return err
 		}
 		return tx.Model(&model.TaskRun{}).
 			Where("task_key = ?", task.TaskKey).
-			Updates(&taskRun).Error
+			Updates(&taskRunPo).Error
 	})
 }
 
-func (t *taskRepoImpl) GetTask(taskKey string) (*model.Task, error) {
-	var task model.Task
-	if err := t.db.Model(&Task{}).Where("task_key = ?", taskKey).First(&task).Error; err != nil {
-		return nil, err
-	}
-	return &task, nil
+func (t *taskRepoImpl) UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus) error {
+	return t.db.Model(&model.Task{}).
+		Where("task_key = ?", taskKey).
+		Update("status", status.String()).Error
 }
 
-func (t *taskRepoImpl) ListTaskRuns() ([]*model.TaskRun, error) {
-	var taskRuns []*model.TaskRun
-	if err := t.db.Model(&TaskRun{}).Find(&taskRuns).Error; err != nil {
+func (t *taskRepoImpl) GetTask(ctx context.Context, taskKey string) (*model.Task, error) {
+	var task Task
+	if err := t.db.WithContext(ctx).
+		Model(&Task{}).
+		Where("task_key = ?", taskKey).
+		First(&task).Error; err != nil {
 		return nil, err
 	}
-	return taskRuns, nil
+	return ToTaskModel(&task), nil
+}
+
+func (t *taskRepoImpl) BatchGetTask(ctx context.Context, taskKeys []string) ([]*model.Task, error) {
+	var tasks []*Task
+	if err := t.db.WithContext(ctx).
+		Model(&Task{}).
+		Where("task_key in (?)", taskKeys).
+		Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+
+	return lo.Map(tasks, func(item *Task, index int) *model.Task {
+		return ToTaskModel(item)
+	}), nil
+}
+
+func (t *taskRepoImpl) ListTaskRuns(ctx context.Context) ([]*model.TaskRun, error) {
+	var taskRuns []*TaskRun
+	if err := t.db.WithContext(ctx).
+		Model(&TaskRun{}).
+		Find(&taskRuns).Error; err != nil {
+		return nil, err
+	}
+
+	return lo.Map(taskRuns, func(item *TaskRun, index int) *model.TaskRun {
+		return ToTaskRunModel(item)
+	}), nil
+}
+
+func (t *taskRepoImpl) ListRunnableTasks(ctx context.Context, workerID string) ([]*model.TaskRun, error) {
+	var taskRuns []*TaskRun
+	err := t.db.WithContext(ctx).Model(&TaskRun{}).
+		Where("worker_id = ?", workerID).
+		Where("next_run_at <= ?", time.Now()).
+		Find(&taskRuns).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return lo.Map(taskRuns, func(item *TaskRun, index int) *model.TaskRun {
+		return ToTaskRunModel(item)
+	}), nil
 }

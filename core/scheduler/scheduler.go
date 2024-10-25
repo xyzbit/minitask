@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -66,16 +67,16 @@ func (s *Scheduler) Run() error {
 	return s.watchWorkers()
 }
 
-func (s *Scheduler) CreateTask(task *model.Task) error {
+func (s *Scheduler) CreateTask(ctx context.Context, task *model.Task) error {
 	_, exist := executor.GetFactory(task.Type)
 	if !exist {
 		return errors.Errorf("任务类型 %s 不存在", task.Type)
 	}
-	return s.createTask(task)
+	return s.createTask(ctx, task)
 }
 
-func (s *Scheduler) OperateTask(taskKey string, nextStatus model.TaskStatus) error {
-	task, err := s.taskRepo.GetTask(taskKey)
+func (s *Scheduler) OperateTask(ctx context.Context, taskKey string, nextStatus model.TaskStatus) error {
+	task, err := s.taskRepo.GetTask(ctx, taskKey)
 	if err != nil {
 		return err
 	}
@@ -89,6 +90,7 @@ func (s *Scheduler) OperateTask(taskKey string, nextStatus model.TaskStatus) err
 	}
 
 	err = s.taskRepo.UpdateTaskTX(
+		ctx,
 		&model.Task{
 			TaskKey: task.TaskKey,
 			Status:  waitStatus,
@@ -104,20 +106,25 @@ func (s *Scheduler) OperateTask(taskKey string, nextStatus model.TaskStatus) err
 	return nil
 }
 
-func (s *Scheduler) createTask(task *model.Task) error {
+func (s *Scheduler) createTask(ctx context.Context, task *model.Task) error {
 	task.TaskKey = uuid.New().String()
 	task.Status = model.TaskStatusWaitScheduling
 	taskRun := &model.TaskRun{TaskKey: task.TaskKey}
 
-	err := s.taskRepo.CreateTaskTX(task, taskRun)
+	err := s.taskRepo.CreateTaskTX(ctx, task, taskRun)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
 }
 
-func (s *Scheduler) assignTask(taskKey string) error {
-	workerID, err := s.selectWorkerID()
+func (s *Scheduler) assignTask(ctx context.Context, task *model.Task) error {
+	if task.Status == model.TaskStatusWaitScheduling {
+		log.Info("任务[%s]首次分配工作者", task.TaskKey)
+	} else {
+		log.Info("任务[%s]需要重新分配, 工作者替换", task.TaskKey)
+	}
+	workerID, err := s.selectWorkerID(task)
 	if err != nil {
 		return err
 	}
@@ -125,12 +132,13 @@ func (s *Scheduler) assignTask(taskKey string) error {
 	nextStatus := model.TaskStatusRunning
 	now := time.Now()
 	err = s.taskRepo.UpdateTaskTX(
+		ctx,
 		&model.Task{
-			TaskKey: taskKey,
+			TaskKey: task.TaskKey,
 			Status:  nextStatus.PreWaitStatus(),
 		},
 		&model.TaskRun{
-			TaskKey:       taskKey,
+			TaskKey:       task.TaskKey,
 			NextRunAt:     &now,
 			WorkerID:      workerID,
 			WantRunStatus: nextStatus,
@@ -154,28 +162,43 @@ func (s *Scheduler) monitorAssignEvent() {
 			continue
 		}
 
-		newAvailableWorkers := s.getAvailableWorkers()
-		taskRuns, err := s.taskRepo.ListTaskRuns()
+		ctx := context.Background()
+		tasks, err := s.loadNeedAssignTasks(ctx)
 		if err != nil {
-			log.Error("获取任务列表失败: %v", err)
+			log.Error("获取任务列表失败: %+v", err)
 			continue
 		}
-		for _, run := range taskRuns {
-			found := slices.ContainsFunc(newAvailableWorkers, func(newWorker discover.Instance) bool {
-				return newWorker.InstanceId == run.WorkerID
-			})
-			if !found {
-				if run.WorkerID == "" {
-					log.Error("任务[%d]首次分配工作者", run.ID)
-				} else {
-					log.Error("任务[%d]需要重新分配, 工作者[%s]已下线", run.ID, run.WorkerID)
-				}
-				if err := s.assignTask(run.TaskKey); err != nil {
-					log.Error("任务[%d]分配失败, err: %v", run.ID, err)
-				}
+
+		for _, task := range tasks {
+			if err := s.assignTask(ctx, task); err != nil {
+				log.Error("任务[%s]分配失败, err: %v", task.TaskKey, err)
 			}
 		}
 	}
+}
+
+func (s *Scheduler) loadNeedAssignTasks(ctx context.Context) ([]*model.Task, error) {
+	newAvailableWorkers := s.getAvailableWorkers()
+	taskRuns, err := s.taskRepo.ListTaskRuns(ctx)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	taskKeys := make([]string, 0, len(taskRuns))
+	for _, run := range taskRuns {
+		found := slices.ContainsFunc(newAvailableWorkers, func(newWorker discover.Instance) bool {
+			return newWorker.InstanceId == run.WorkerID
+		})
+		if !found {
+			taskKeys = append(taskKeys, run.TaskKey)
+		}
+	}
+
+	tasks, err := s.taskRepo.BatchGetTask(ctx, taskKeys)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return tasks, nil
 }
 
 func (s *Scheduler) amILeader() (bool, *election.LeaderElection, error) {
@@ -212,11 +235,11 @@ func (s *Scheduler) watchWorkers() error {
 }
 
 type workerScore struct {
-	InstanceId string
-	Score      float64
+	index int
+	score float64
 }
 
-func (s *Scheduler) selectWorkerID() (string, error) {
+func (s *Scheduler) selectWorkerID(task *model.Task) (string, error) {
 	s.rwmu.RLock()
 	defer s.rwmu.RUnlock()
 
@@ -225,10 +248,17 @@ func (s *Scheduler) selectWorkerID() (string, error) {
 		return "", errors.New("没有可用的 worker 服务")
 	}
 
-	selectedWorker, err := selectWorkerByResources(availableWorkers)
-	if err != nil {
-		return "", err
+	// filte 排除掉不部署的机器（污点、亲和性）
+	candidateWorkers := filteWorker(task, availableWorkers)
+	if len(candidateWorkers) == 0 {
+		return "", errors.New("没有可用的 worker")
 	}
+	if len(candidateWorkers) == 1 {
+		return candidateWorkers[0].InstanceId, nil
+	}
+
+	// priority 根据资源使用情况打分
+	selectedWorker := priorityWorker(candidateWorkers)
 
 	s.updateLocalResourceEstimate(selectedWorker)
 
@@ -272,15 +302,26 @@ func (s *Scheduler) triggerReAssignEvent() {
 	s.assignEvent <- struct{}{}
 }
 
-func (s *Scheduler) updateLocalResourceEstimate(worker discover.Instance) {
-	resourceUsage := ParseResourceUsage(worker.Metadata)
-	cpuUsage := resourceUsage[cpuUsageKey]
-	memUsage := resourceUsage[memUsageKey]
-	goroutineNum := resourceUsage[goGoroutineKey]
+func (s *Scheduler) setAvailableWorkers(instances []discover.Instance) {
+	s.availableWorkers.Store(instances)
+}
 
-	worker.Metadata[cpuUsageKey] = strconv.FormatFloat(cpuUsage+0.05, 'f', 2, 64)
-	worker.Metadata[memUsageKey] = strconv.FormatFloat(memUsage+0.05, 'f', 2, 64)
-	worker.Metadata[goGoroutineKey] = strconv.FormatFloat(goroutineNum+1, 'f', 2, 64)
+func (s *Scheduler) getAvailableWorkers() []discover.Instance {
+	workers := s.availableWorkers.Load().([]discover.Instance)
+	newWorkers := make([]discover.Instance, len(workers))
+	copy(newWorkers, workers)
+	return newWorkers
+}
+
+func (s *Scheduler) updateLocalResourceEstimate(worker discover.Instance) {
+	resourceUsage := model.ParseResourceUsage(worker.Metadata)
+	cpuUsage := resourceUsage[model.CpuUsageKey]
+	memUsage := resourceUsage[model.MemUsageKey]
+	goroutineNum := resourceUsage[model.GoGoroutineKey]
+
+	worker.Metadata[model.CpuUsageKey] = strconv.FormatFloat(cpuUsage+0.05, 'f', 2, 64)
+	worker.Metadata[model.MemUsageKey] = strconv.FormatFloat(memUsage+0.05, 'f', 2, 64)
+	worker.Metadata[model.GoGoroutineKey] = strconv.FormatFloat(goroutineNum+1, 'f', 2, 64)
 
 	s.updateWorkerInCache(worker)
 }
@@ -296,79 +337,64 @@ func (s *Scheduler) updateWorkerInCache(updatedWorker discover.Instance) {
 	s.setAvailableWorkers(workers)
 }
 
-func (s *Scheduler) setAvailableWorkers(instances []discover.Instance) {
-	s.availableWorkers.Store(instances)
-}
+func filteWorker(task *model.Task, workers []discover.Instance) []discover.Instance {
+	candidateWorkers := make([]discover.Instance, 0, len(workers))
 
-func (s *Scheduler) getAvailableWorkers() []discover.Instance {
-	workers := s.availableWorkers.Load().([]discover.Instance)
-	newWorkers := make([]discover.Instance, len(workers))
-	copy(newWorkers, workers)
-	return newWorkers
-}
-
-func selectWorkerByResources(workers []discover.Instance) (discover.Instance, error) {
-	if len(workers) == 0 {
-		return discover.Instance{}, errors.New("没有可用的 worker")
-	}
-	if len(workers) == 1 {
-		return workers[0], nil
-	}
-
-	machineScores := make([]workerScore, 0, len(workers))
 	for _, worker := range workers {
-		resourceUsage := ParseResourceUsage(worker.Metadata)
-		cpuScore := resourceUsage[cpuUsageKey]
-		memoryScore := resourceUsage[memUsageKey]
-
-		machineScores = append(machineScores, workerScore{
-			InstanceId: worker.InstanceId,
-			Score:      cpuScore*0.5 + memoryScore*0.5,
-		})
-	}
-	sort.SliceStable(machineScores, func(i, j int) bool {
-		return machineScores[i].Score < machineScores[j].Score
-	})
-
-	// 对于机器资源分数接近的节点，通过进程资源分数进一步筛选
-	candidateWorkers := make([]discover.Instance, 0, len(machineScores))
-	for i, score := range machineScores {
-		if i != 0 && score.Score-machineScores[i-1].Score > 3 {
-			break
+		nodeStaints := model.ParseStaint(worker.Metadata)
+		if len(nodeStaints) == 0 {
+			candidateWorkers = append(candidateWorkers, worker)
+			continue
 		}
-		candidateWorkers = append(candidateWorkers, discover.Instance{InstanceId: score.InstanceId})
-	}
-	if len(candidateWorkers) == 1 {
-		return candidateWorkers[0], nil
-	}
+		if len(nodeStaints) > len(task.Staints) {
+			continue
+		}
 
-	var (
-		bestWorker discover.Instance
-		bestScore  float64 = -1
-	)
-	for _, candidate := range candidateWorkers {
-		for _, worker := range workers {
-			if worker.InstanceId == candidate.InstanceId {
-				resourceUsage := ParseResourceUsage(worker.Metadata)
-				goroutineNum := resourceUsage[goGoroutineKey]
-				gcPause := resourceUsage[goGcPauseKey]
-				gcCount := resourceUsage[goGcCountKey]
-
-				var programScore float64
-				if gcCount == 0 {
-					programScore = float64(goroutineNum)
-				} else {
-					programScore = float64(goroutineNum)*0.5 + float64(gcPause)/float64(gcCount)*0.5
-				}
-
-				if bestScore == -1 || programScore < bestScore {
-					bestScore = programScore
-					bestWorker = worker
-				}
+		matched := true
+		for k, nodev := range nodeStaints {
+			if task.Staints[k] != nodev {
+				matched = false
 				break
 			}
 		}
+		if matched {
+			candidateWorkers = append(candidateWorkers, worker)
+		}
 	}
+	return candidateWorkers
+}
 
-	return bestWorker, nil
+func priorityWorker(workers []discover.Instance) discover.Instance {
+	scores := make([]workerScore, 0, len(workers))
+	for i, worker := range workers {
+		resourceUsage := model.ParseResourceUsage(worker.Metadata)
+		cpuScore := resourceUsage[model.CpuUsageKey]
+		memoryScore := resourceUsage[model.MemUsageKey]
+		goroutineNum := resourceUsage[model.GoGoroutineKey]
+		gcPause := resourceUsage[model.GoGcPauseKey]
+		gcCount := resourceUsage[model.GoGcCountKey]
+
+		score := cpuScore*0.5 + memoryScore*0.5
+
+		if gcCount == 0 {
+			score += float64(goroutineNum)
+		} else {
+			// 最大的 goroutine 数和 gc 平均耗时微秒(通常情况每次10-30微秒, stw 可能达到 10-50ms, 正常情况平均 10-500 微秒间)
+			maxGoroutineNum, maxGcMicrosecond := float64(5000), float64(500)
+			goroutineScore := (float64(goroutineNum) / maxGoroutineNum) * 100
+			gcScore := (float64(gcPause) / float64(gcCount)) / maxGcMicrosecond * 100
+			score += goroutineScore*0.5 + gcScore*0.5
+		}
+
+		scores = append(scores, workerScore{
+			index: i,
+			score: score,
+		})
+	}
+	sort.SliceStable(scores, func(i, j int) bool {
+		return scores[i].score < scores[j].score
+	})
+
+	log.Info("worker scores: %v", scores)
+	return workers[scores[0].index]
 }

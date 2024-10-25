@@ -56,11 +56,18 @@ func ReplaceGlobal(l Logger) {
 	_globalLogger = l
 }
 
+func NewLoggerByzap(z *zap.SugaredLogger) Logger {
+	return &DefaultLogger{SugaredLogger: z}
+}
+
 type DefaultLogger struct {
 	*zap.SugaredLogger
 }
 
 func (l *DefaultLogger) Debug(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
@@ -72,6 +79,9 @@ func (l *DefaultLogger) Debug(args ...interface{}) {
 }
 
 func (l *DefaultLogger) Info(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
@@ -83,6 +93,9 @@ func (l *DefaultLogger) Info(args ...interface{}) {
 }
 
 func (l *DefaultLogger) Warn(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
@@ -94,6 +107,9 @@ func (l *DefaultLogger) Warn(args ...interface{}) {
 }
 
 func (l *DefaultLogger) Error(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
@@ -105,6 +121,9 @@ func (l *DefaultLogger) Error(args ...interface{}) {
 }
 
 func (l *DefaultLogger) Panic(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
@@ -116,6 +135,9 @@ func (l *DefaultLogger) Panic(args ...interface{}) {
 }
 
 func (l *DefaultLogger) Fatal(args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if len(args) == 0 {
 		return
 	}
