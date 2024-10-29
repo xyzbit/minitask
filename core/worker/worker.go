@@ -188,7 +188,7 @@ func (w *Worker) loadRunnableTasks(ctx context.Context) ([]*model.TaskRun, error
 
 func (w *Worker) setInstanceID() error {
 	// 获取当前实例的 InstanceId(注册存在延迟，重试获取)
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 10; i++ {
 		if w.id != "" {
 			break
 		}
