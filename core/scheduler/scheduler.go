@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xyzbit/minitaskx/core/discover"
 	"github.com/xyzbit/minitaskx/core/election"
-	"github.com/xyzbit/minitaskx/core/executor"
 	"github.com/xyzbit/minitaskx/core/model"
 	"github.com/xyzbit/minitaskx/core/taskrepo"
 	"github.com/xyzbit/minitaskx/pkg/log"
@@ -48,8 +47,8 @@ func NewScheduler(
 	}, nil
 }
 
-func (s *Scheduler) HttpServer(scheduler *Scheduler) *HttpServer {
-	return &HttpServer{scheduler: scheduler}
+func (s *Scheduler) HttpServer() *HttpServer {
+	return &HttpServer{scheduler: s}
 }
 
 func (s *Scheduler) Run() error {
@@ -68,10 +67,10 @@ func (s *Scheduler) Run() error {
 }
 
 func (s *Scheduler) CreateTask(ctx context.Context, task *model.Task) error {
-	_, exist := executor.GetFactory(task.Type)
-	if !exist {
-		return errors.Errorf("任务类型 %s 不存在", task.Type)
-	}
+	// _, exist := executor.GetFactory(task.Type)
+	// if !exist {
+	// 	return errors.Errorf("任务类型 %s 不存在", task.Type)
+	// }
 	return s.createTask(ctx, task)
 }
 
@@ -80,9 +79,9 @@ func (s *Scheduler) OperateTask(ctx context.Context, taskKey string, nextStatus 
 	if err != nil {
 		return err
 	}
-	if err := task.Status.CanTransition(nextStatus); err != nil {
-		return err
-	}
+	// if err := task.Status.CanTransition(nextStatus); err != nil {
+	// 	return err
+	// }
 
 	waitStatus := nextStatus.PreWaitStatus()
 	if waitStatus == "" {

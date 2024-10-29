@@ -19,6 +19,8 @@ type Interface interface {
 	BatchGetTask(ctx context.Context, taskKeys []string) ([]*model.Task, error)
 	// 获任务调度信息
 	ListTaskRuns(ctx context.Context) ([]*model.TaskRun, error)
+	// 更新任务状态并删除任务调度信息
+	FinshTaskTX(ctx context.Context, taskKey string, status model.TaskStatus, failedReason string) error
 	// 获取可运行的任务
 	ListRunnableTasks(ctx context.Context, workerID string) ([]*model.TaskRun, error)
 }

@@ -111,7 +111,7 @@ func (w *Worker) run(ctx context.Context) error {
 				w.logger.Error("加载可执行任务失败: %v", w.id, err)
 				continue
 			}
-			w.logger.Info("加载到 %d 个可执行任务", w.id, len(wantTaskRuns))
+			w.logger.Info("加载到 %d 个可执行任务", len(wantTaskRuns))
 
 			for _, want := range wantTaskRuns {
 				realRunStatus := w.getRealRunStatus(want.TaskKey)
@@ -189,6 +189,10 @@ func (w *Worker) loadRunnableTasks(ctx context.Context) ([]*model.TaskRun, error
 func (w *Worker) setInstanceID() error {
 	// 获取当前实例的 InstanceId(注册存在延迟，重试获取)
 	for i := 0; i < 10; i++ {
+		if w.id != "" {
+			break
+		}
+
 		time.Sleep(500 * time.Millisecond)
 		instances, err := w.discover.GetAvailableInstances()
 		if err != nil {
@@ -200,9 +204,6 @@ func (w *Worker) setInstanceID() error {
 				w.id = instance.InstanceId
 				break
 			}
-		}
-		if w.id != "" {
-			break
 		}
 	}
 
@@ -246,10 +247,20 @@ func (w *Worker) syncRealStatusToTaskRecord(interval time.Duration) {
 		})
 
 		for taskKey, status := range realRunStatusMap {
-			err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status)
-			if err != nil {
-				w.logger.Error("update task status failed %+v", err)
+			if !status.IsFinalStatus() {
+				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status)
+				if err != nil {
+					w.logger.Error("update task status failed %+v", err)
+				}
+				continue
 			}
+			// in final status
+			if err := w.taskRepo.FinshTaskTX(context.Background(), taskKey, status, ""); err != nil {
+				w.logger.Error("finish task failed %+v", err)
+				continue
+			}
+			w.taskStatus.Delete(taskKey)
+			w.executors.Delete(taskKey)
 		}
 
 		time.Sleep(interval + time.Duration(rand.Intn(500))*time.Millisecond)

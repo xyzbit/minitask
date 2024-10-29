@@ -1,11 +1,12 @@
 package scheduler
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"github.com/xyzbit/minitaskx/core/model"
+	"github.com/xyzbit/minitaskx/pkg/log"
 )
 
 type HttpServer struct {
@@ -23,7 +24,11 @@ func (s *HttpServer) CreateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	log.Printf("assign task: %+v", req)
+	log.Info("assign task: %+v", req)
+	if req.Type == "" || req.Payload == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid params"})
+		return
+	}
 
 	if err := s.scheduler.CreateTask(c.Request.Context(), &model.Task{
 		BizID:   req.BizID,
@@ -48,7 +53,18 @@ func (s *HttpServer) OperateTask(c *gin.Context) {
 		return
 	}
 
-	if err := s.scheduler.OperateTask(c.Request.Context(), req.TaskKey, model.TaskStatus(req.Status)); err != nil {
+	ts := model.TaskStatus(req.Status)
+	if !lo.Contains(
+		[]model.TaskStatus{
+			model.TaskStatusPaused,
+			model.TaskStatusRunning,
+			model.TaskStatusSuccess,
+			model.TaskStatusFailed,
+		}, ts) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status"})
+		return
+	}
+	if err := s.scheduler.OperateTask(c.Request.Context(), req.TaskKey, ts); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

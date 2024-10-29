@@ -41,19 +41,19 @@ func (t *taskRepoImpl) UpdateTaskTX(ctx context.Context, task *model.Task, taskR
 	taskPo := FromTaskModel(task)
 	taskRunPo := FromTaskRunModel(taskRun)
 	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Task{}).
+		if err := tx.Model(&Task{}).
 			Where("task_key = ?", task.TaskKey).
 			Updates(&taskPo).Error; err != nil {
 			return err
 		}
-		return tx.Model(&model.TaskRun{}).
+		return tx.Model(&TaskRun{}).
 			Where("task_key = ?", task.TaskKey).
 			Updates(&taskRunPo).Error
 	})
 }
 
 func (t *taskRepoImpl) UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus) error {
-	return t.db.Model(&model.Task{}).
+	return t.db.Model(&Task{}).
 		Where("task_key = ?", taskKey).
 		Update("status", status.String()).Error
 }
@@ -94,6 +94,19 @@ func (t *taskRepoImpl) ListTaskRuns(ctx context.Context) ([]*model.TaskRun, erro
 	return lo.Map(taskRuns, func(item *TaskRun, index int) *model.TaskRun {
 		return ToTaskRunModel(item)
 	}), nil
+}
+
+func (t *taskRepoImpl) FinshTaskTX(ctx context.Context, taskKey string, status model.TaskStatus, failedReason string) error {
+	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Task{}).
+			Where("task_key = ?", taskKey).
+			Update("status", status.String()).Error; err != nil {
+			return err
+		}
+		return tx.Model(&TaskRun{}).
+			Where("task_key = ?", taskKey).
+			Delete(&TaskRun{}).Error
+	})
 }
 
 func (t *taskRepoImpl) ListRunnableTasks(ctx context.Context, workerID string) ([]*model.TaskRun, error) {

@@ -64,7 +64,12 @@ type TransitionFunc func(ctx context.Context, taskKey string) error
 
 var transitionFuncsMap = make(map[TaskStatus]map[TaskStatus]TransitionFunc)
 
+// TODO 使用db存储
 func RegisterTransitionFunc(from, to TaskStatus, fn TransitionFunc) {
+	if _, ok := transitionFuncsMap[from]; !ok {
+		transitionFuncsMap[from] = make(map[TaskStatus]TransitionFunc)
+	}
+
 	transitionFuncsMap[from][to] = fn
 }
 

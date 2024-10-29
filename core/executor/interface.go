@@ -6,17 +6,16 @@ import (
 	"github.com/xyzbit/minitaskx/core/model"
 )
 
-var executorFactory = make(map[string]Factory)
+var executorFactory = make(map[string]CreateExecutor)
 
-type Factory interface {
-	Create() (Interface, error)
+type CreateExecutor func() (Interface, error)
+
+// TODO 注册时同时写到mysql中，scheduler 可以提前判断任务类型是否支持.
+func RegisteFactory(taskType string, ce CreateExecutor) {
+	executorFactory[taskType] = ce
 }
 
-func RegisteFactory(taskType string, factory Factory) {
-	executorFactory[taskType] = factory
-}
-
-func GetFactory(taskType string) (Factory, bool) {
+func GetFactory(taskType string) (CreateExecutor, bool) {
 	e, ok := executorFactory[taskType]
 	return e, ok
 }
