@@ -9,6 +9,13 @@ type Instance struct {
 	Metadata   map[string]string `json:"metadata"`
 }
 
+func (i Instance) ID() string {
+	if len(i.Metadata) > 0 && i.Metadata["worker_id"] != "" {
+		return i.Metadata["worker_id"]
+	}
+	return i.InstanceId
+}
+
 type Interface interface {
 	GetAvailableInstances() ([]Instance, error)
 	UpdateInstance(Instance) error

@@ -2,10 +2,10 @@ package worker
 
 import "github.com/xyzbit/minitaskx/core/model"
 
-func generateInstanceMetadata() (map[string]string, error) {
+func (w *Worker) generateInstanceMetadata() (map[string]string, error) {
 	metadata := make(map[string]string)
 
-	workerDesc := generateWorkerDesc()
+	workerDesc := w.generateWorkerDesc()
 	for k, v := range workerDesc {
 		metadata[k] = v
 	}
@@ -30,9 +30,10 @@ func generateInstanceMetadata() (map[string]string, error) {
 }
 
 // 获取节点描述
-func generateWorkerDesc() map[string]string {
-	// TODO name, createtime ...
-	return nil
+func (w *Worker) generateWorkerDesc() map[string]string {
+	return map[string]string{
+		"worker_id": w.id,
+	}
 }
 
 func LoadWorkerDesc(metadata map[string]string) map[string]string {

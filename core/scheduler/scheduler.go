@@ -186,7 +186,7 @@ func (s *Scheduler) loadNeedAssignTasks(ctx context.Context) ([]*model.Task, err
 	taskKeys := make([]string, 0, len(taskRuns))
 	for _, run := range taskRuns {
 		found := slices.ContainsFunc(newAvailableWorkers, func(newWorker discover.Instance) bool {
-			return newWorker.InstanceId == run.WorkerID
+			return newWorker.ID() == run.WorkerID
 		})
 		if !found {
 			taskKeys = append(taskKeys, run.TaskKey)
@@ -277,7 +277,7 @@ func (s *Scheduler) hasAvailableWorkersChanged(newAvailableWorkers []discover.In
 	for _, newWorker := range newAvailableWorkers {
 		found := false
 		for _, oldWorker := range s.getAvailableWorkers() {
-			if newWorker.InstanceId == oldWorker.InstanceId {
+			if newWorker.ID() == oldWorker.ID() {
 				found = true
 				break
 			}

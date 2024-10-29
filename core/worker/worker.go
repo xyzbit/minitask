@@ -56,7 +56,7 @@ func NewWorker(
 }
 
 func (w *Worker) Run(ctx context.Context) error {
-	metadata, err := generateInstanceMetadata()
+	metadata, err := w.generateInstanceMetadata()
 	if err != nil {
 		return fmt.Errorf("生成实例元数据失败: %v", err)
 	}
@@ -188,7 +188,7 @@ func (w *Worker) loadRunnableTasks(ctx context.Context) ([]*model.TaskRun, error
 
 func (w *Worker) setInstanceID() error {
 	// 获取当前实例的 InstanceId(注册存在延迟，重试获取)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		if w.id != "" {
 			break
 		}
@@ -215,7 +215,7 @@ func (w *Worker) setInstanceID() error {
 
 func (w *Worker) reportResourceUsage(interval time.Duration) {
 	for {
-		metadata, err := generateInstanceMetadata()
+		metadata, err := w.generateInstanceMetadata()
 		if err != nil {
 			w.logger.Error("获取资源使用情况失败: %v", err)
 			continue
