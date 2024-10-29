@@ -39,7 +39,7 @@ func NewNacosDiscover(cfg NacosConfig) (Interface, error) {
 		NotLoadCacheAtStart: true,
 		LogDir:              "/tmp/nacos/log",
 		CacheDir:            "/tmp/nacos/cache",
-		LogLevel:            "debug",
+		LogLevel:            cfg.LogLevel,
 	}
 
 	namingClient, err := clients.NewNamingClient(
