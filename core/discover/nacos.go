@@ -19,6 +19,7 @@ type nacosDiscover struct {
 type NacosConfig struct {
 	IpAddr      string
 	Port        uint64
+	NamespaceId string
 	ServiceName string
 	GroupName   string
 	ClusterName string
@@ -33,7 +34,7 @@ func NewNacosDiscover(cfg NacosConfig) (Interface, error) {
 		},
 	}
 	clientConfig := constant.ClientConfig{
-		NamespaceId:         "", // 命名空间ID
+		NamespaceId:         cfg.NamespaceId, // 命名空间ID
 		TimeoutMs:           5000,
 		NotLoadCacheAtStart: true,
 		LogDir:              "/tmp/nacos/log",
