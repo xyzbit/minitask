@@ -40,26 +40,36 @@ func (w *Worker) runTask(ctx context.Context, taskKey string) error {
 	if !exist {
 		return errors.Errorf("任务[%s] 类型[%s] 未找到执行器", taskKey, task.Type)
 	}
-	executor, err := createExecutor()
+	exe, err := createExecutor()
 	if err != nil {
 		return errors.Wrapf(err, "任务[%s] 类型[%s] 创建执行器失败", taskKey, task.Type)
 	}
 
-	w.executors.Store(taskKey, executor)
+	w.executors.Store(taskKey, exe)
 	w.setRealRunStatus(taskKey, model.TaskStatusRunning)
 
 	concurrency.SafeGoWithRecoverFunc(
 		func() {
-			runStatus := model.TaskStatusSuccess
-			result := executor.Execute(ctx, task)
-			if result.Err != nil {
-				runStatus = model.TaskStatusFailed
-			}
-			if result.IsPaused {
-				runStatus = model.TaskStatusPaused
-			}
+			for {
+				result := exe.Execute(ctx, task)
+				if result.Err != nil {
+					w.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Err)
+					continue
+				}
 
-			w.setRealRunStatus(taskKey, runStatus)
+				runStatus := model.TaskStatusSuccess
+				switch result.Status {
+				case executor.ExecStatusPaused:
+					runStatus = model.TaskStatusPaused
+				case executor.ExecStatusSuccess:
+					runStatus = model.TaskStatusSuccess
+				case executor.ExecStatusFail:
+					runStatus = model.TaskStatusFailed
+				}
+
+				w.setRealRunStatus(taskKey, runStatus)
+				return
+			}
 		}, func(error) {
 			log.Error("任务[%s], 运行 panic, err: %v", taskKey, err)
 

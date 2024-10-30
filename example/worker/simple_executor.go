@@ -30,8 +30,8 @@ func (e *Executor) Execute(ctx context.Context, task *model.Task) executor.Resul
 	status := e.status.Load()
 	if status == statusRunning {
 		return executor.Result{
-			Err:      nil,
-			IsPaused: false,
+			Err:    nil,
+			Status: executor.ExecStatusFail,
 		}
 	}
 	e.status.Store(statusRunning)
@@ -41,8 +41,8 @@ func (e *Executor) Execute(ctx context.Context, task *model.Task) executor.Resul
 		if s == statusStop || s == statusPaused {
 			log.Info("executor is stop or paused...")
 			return executor.Result{
-				Err:      nil,
-				IsPaused: lo.If(s == statusPaused, true).Else(false),
+				Err:    nil,
+				Status: lo.If(s == statusPaused, executor.ExecStatusPaused).Else(executor.ExecStatusSuccess),
 			}
 		}
 

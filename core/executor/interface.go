@@ -20,9 +20,19 @@ func GetFactory(taskType string) (CreateExecutor, bool) {
 	return e, ok
 }
 
+type ExecStatus int
+
+const (
+	ExecStatusPaused  ExecStatus = 1
+	ExecStatusSuccess ExecStatus = 2
+	ExecStatusFail    ExecStatus = 3
+)
+
 type Result struct {
-	IsPaused bool
-	Err      error
+	Status ExecStatus
+	Msg    string
+	// 返回 error 表示异常会进行重试
+	Err error
 }
 
 type Interface interface {
