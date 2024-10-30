@@ -52,8 +52,8 @@ func (w *Worker) runTask(ctx context.Context, taskKey string) error {
 		func() {
 			for {
 				result := exe.Execute(ctx, task)
-				if result.Err != nil {
-					w.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Err)
+				if result.Status == executor.ExecStatusError {
+					w.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Msg)
 					continue
 				}
 

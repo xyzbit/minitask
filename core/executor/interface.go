@@ -26,13 +26,12 @@ const (
 	ExecStatusPaused  ExecStatus = 1
 	ExecStatusSuccess ExecStatus = 2
 	ExecStatusFail    ExecStatus = 3
+	ExecStatusError   ExecStatus = 4 // 该状态表示未知错误，会进行重试
 )
 
 type Result struct {
 	Status ExecStatus
 	Msg    string
-	// 返回 error 表示异常会进行重试
-	Err error
 }
 
 type Interface interface {
