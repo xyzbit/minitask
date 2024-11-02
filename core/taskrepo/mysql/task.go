@@ -70,6 +70,9 @@ func (t *taskRepoImpl) GetTask(ctx context.Context, taskKey string) (*model.Task
 }
 
 func (t *taskRepoImpl) BatchGetTask(ctx context.Context, taskKeys []string) ([]*model.Task, error) {
+	if len(taskKeys) == 0 {
+		return nil, nil
+	}
 	var tasks []*Task
 	if err := t.db.WithContext(ctx).
 		Model(&Task{}).
