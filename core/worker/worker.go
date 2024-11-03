@@ -198,7 +198,8 @@ func (w *Worker) setInstanceID() error {
 		time.Sleep(500 * time.Millisecond)
 		instances, err := w.discover.GetAvailableInstances()
 		if err != nil {
-			return fmt.Errorf("获取实例列表失败: %v", err)
+			log.Error("获取实例列表失败: %v", err)
+			continue
 		}
 
 		for _, instance := range instances {
