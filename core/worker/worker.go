@@ -251,15 +251,15 @@ func (w *Worker) syncRealStatusToTaskRecord(interval time.Duration) {
 
 		for taskKey, status := range realRunStatusMap {
 			if !status.IsFinalStatus() {
-				result := w.getExecutorResult(taskKey)
-				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status, result)
+				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status)
 				if err != nil {
 					w.logger.Error("update task status failed %+v", err)
 				}
 				continue
 			}
 			// in final status
-			if err := w.taskRepo.FinshTaskTX(context.Background(), taskKey, status, ""); err != nil {
+			result := w.getExecutorResult(taskKey)
+			if err := w.taskRepo.FinshTaskTX(context.Background(), taskKey, status, result); err != nil {
 				w.logger.Error("finish task failed %+v", err)
 				continue
 			}
