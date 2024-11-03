@@ -12,7 +12,7 @@ type Interface interface {
 	// 事务更新任务和任务调度信息
 	UpdateTaskTX(ctx context.Context, task *model.Task, taskRun *model.TaskRun) error
 	// 更新任务信息
-	UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus) error
+	UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus, result string) error
 	// 获取任务
 	GetTask(ctx context.Context, taskKey string) (*model.Task, error)
 	// 批量获取任务

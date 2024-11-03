@@ -52,10 +52,13 @@ func (t *taskRepoImpl) UpdateTaskTX(ctx context.Context, task *model.Task, taskR
 	})
 }
 
-func (t *taskRepoImpl) UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus) error {
+func (t *taskRepoImpl) UpdateTaskStatus(ctx context.Context, taskKey string, status model.TaskStatus, result string) error {
 	return t.db.Model(&Task{}).
 		Where("task_key = ?", taskKey).
-		Update("status", status.String()).Error
+		Updates(map[string]interface{}{
+			"status": status.String(),
+			"result": result,
+		}).Error
 }
 
 func (t *taskRepoImpl) GetTask(ctx context.Context, taskKey string) (*model.Task, error) {

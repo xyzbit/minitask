@@ -68,12 +68,14 @@ func (w *Worker) runTask(ctx context.Context, taskKey string) error {
 				}
 
 				w.setRealRunStatus(taskKey, runStatus)
+				w.executorResults.Store(taskKey, result)
 				return
 			}
 		}, func(error) {
 			log.Error("任务[%s], 运行 panic, err: %v", taskKey, err)
 
 			w.executors.Delete(taskKey)
+			w.executorResults.Delete(taskKey)
 			w.setRealRunStatus(taskKey, model.TaskStatusExecptionRun)
 		},
 	)

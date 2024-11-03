@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -25,7 +26,8 @@ type Worker struct {
 	taskStatus sync.Map
 	// 任务执行器，worker 会管理它们的生命周期
 	// task_key -> executor
-	executors sync.Map
+	executors       sync.Map
+	executorResults sync.Map
 
 	discover discover.Interface
 	taskRepo taskrepo.Interface
@@ -248,7 +250,8 @@ func (w *Worker) syncRealStatusToTaskRecord(interval time.Duration) {
 
 		for taskKey, status := range realRunStatusMap {
 			if !status.IsFinalStatus() {
-				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status)
+				result := w.getExecutorResult(taskKey)
+				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status, result)
 				if err != nil {
 					w.logger.Error("update task status failed %+v", err)
 				}
@@ -261,10 +264,21 @@ func (w *Worker) syncRealStatusToTaskRecord(interval time.Duration) {
 			}
 			w.taskStatus.Delete(taskKey)
 			w.executors.Delete(taskKey)
+			w.executorResults.Delete(taskKey)
 		}
 
 		time.Sleep(interval + time.Duration(rand.Intn(500))*time.Millisecond)
 	}
+}
+
+func (w *Worker) getExecutorResult(taskKey string) string {
+	resultRaw := ""
+	result, ok := w.executorResults.Load(taskKey)
+	if ok {
+		r, _ := json.Marshal(result)
+		resultRaw = string(r)
+	}
+	return resultRaw
 }
 
 func (w *Worker) getRealRunStatus(taskKey string) model.TaskStatus {

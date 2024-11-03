@@ -18,6 +18,7 @@ type Task struct {
 	Staints   *string   `gorm:"column:staints;type:json;comment:任务污点"`
 	Extra     *string   `gorm:"column:extra"`
 	Status    string    `gorm:"column:status;not null;comment:pending scheduled running|puase success failed"`
+	Result    *string   `gorm:"column:result;type:json;comment:任务结果"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
