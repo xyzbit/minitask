@@ -74,6 +74,14 @@ func (s *Scheduler) CreateTask(ctx context.Context, task *model.Task) error {
 	return s.createTask(ctx, task)
 }
 
+func (s *Scheduler) ListTask(ctx context.Context, filter *model.TaskFilter) ([]*model.Task, error) {
+	tasks, err := s.taskRepo.ListTask(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 func (s *Scheduler) OperateTask(ctx context.Context, taskKey string, nextStatus model.TaskStatus) error {
 	task, err := s.taskRepo.GetTask(ctx, taskKey)
 	if err != nil {

@@ -195,7 +195,7 @@ func (w *Worker) setInstanceID() error {
 			break
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		instances, err := w.discover.GetAvailableInstances()
 		if err != nil {
 			log.Error("获取实例列表失败: %v", err)

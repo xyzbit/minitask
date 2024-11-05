@@ -86,6 +86,30 @@ func (t *taskRepoImpl) BatchGetTask(ctx context.Context, taskKeys []string) ([]*
 	}), nil
 }
 
+func (t *taskRepoImpl) ListTask(ctx context.Context, filter *model.TaskFilter) ([]*model.Task, error) {
+	var tasks []*Task
+
+	tx := t.db.WithContext(ctx).Model(&Task{})
+	if filter != nil {
+		if len(filter.BizIDs) > 0 {
+			tx = tx.Where("biz_id in (?)", filter.BizIDs)
+		}
+		if filter.BizType != "" {
+			tx = tx.Where("biz_type = ?", filter.BizType)
+		}
+		if filter.Type != "" {
+			tx = tx.Where("type = ?", filter.Type)
+		}
+	}
+	if err := tx.Limit(filter.Limit).Offset(filter.Offset).Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+
+	return lo.Map(tasks, func(item *Task, index int) *model.Task {
+		return ToTaskModel(item)
+	}), nil
+}
+
 func (t *taskRepoImpl) ListTaskRuns(ctx context.Context) ([]*model.TaskRun, error) {
 	var taskRuns []*TaskRun
 	if err := t.db.WithContext(ctx).

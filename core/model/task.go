@@ -26,3 +26,12 @@ type TaskRun struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+type TaskFilter struct {
+	BizIDs  []string
+	BizType string
+	Type    string
+
+	Offset int
+	Limit  int
+}

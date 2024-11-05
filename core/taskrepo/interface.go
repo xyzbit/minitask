@@ -17,6 +17,8 @@ type Interface interface {
 	GetTask(ctx context.Context, taskKey string) (*model.Task, error)
 	// 批量获取任务
 	BatchGetTask(ctx context.Context, taskKeys []string) ([]*model.Task, error)
+	// 查询任务列表
+	ListTask(ctx context.Context, filter *model.TaskFilter) ([]*model.Task, error)
 	// 获任务调度信息
 	ListTaskRuns(ctx context.Context) ([]*model.TaskRun, error)
 	// 更新任务状态并删除任务调度信息
