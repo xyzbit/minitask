@@ -261,7 +261,7 @@ func (s *Scheduler) selectWorkerID(task *model.Task) (string, error) {
 		return "", errors.New("没有可用的 worker")
 	}
 	if len(candidateWorkers) == 1 {
-		return candidateWorkers[0].InstanceId, nil
+		return candidateWorkers[0].ID(), nil
 	}
 
 	// priority 根据资源使用情况打分
@@ -269,9 +269,9 @@ func (s *Scheduler) selectWorkerID(task *model.Task) (string, error) {
 
 	s.updateLocalResourceEstimate(selectedWorker)
 
-	log.Info("选择 worker InstanceId: %s", selectedWorker.InstanceId)
+	log.Info("选择 worker InstanceId: %s", selectedWorker.ID())
 
-	return selectedWorker.InstanceId, nil
+	return selectedWorker.ID(), nil
 }
 
 func (s *Scheduler) hasAvailableWorkersChanged(newAvailableWorkers []discover.Instance) bool {
@@ -336,7 +336,7 @@ func (s *Scheduler) updateLocalResourceEstimate(worker discover.Instance) {
 func (s *Scheduler) updateWorkerInCache(updatedWorker discover.Instance) {
 	workers := s.getAvailableWorkers()
 	for i, worker := range workers {
-		if worker.InstanceId == updatedWorker.InstanceId {
+		if worker.ID() == updatedWorker.ID() {
 			workers[i] = updatedWorker
 			break
 		}
