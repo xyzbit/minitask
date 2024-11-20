@@ -165,7 +165,7 @@ func (s *Scheduler) monitorAssignEvent() {
 			continue
 		}
 		if !amILeader {
-			log.Error("当前节点不是 leader, 不进行任务重新分配")
+			log.Info("当前节点不是 leader, 不进行任务重新分配")
 			continue
 		}
 

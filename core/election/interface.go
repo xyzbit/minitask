@@ -5,7 +5,7 @@ import "time"
 type LeaderElection struct {
 	Anchor         int
 	MasterID       string
-	Endpoint       string
+	IP             string
 	LastSeenActive time.Time
 }
 

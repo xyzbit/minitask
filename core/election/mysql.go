@@ -1,8 +1,8 @@
 package election
 
 import (
+	"errors"
 	"log"
-	"net"
 	"time"
 
 	"github.com/xyzbit/minitaskx/pkg"
@@ -11,11 +11,11 @@ import (
 )
 
 type mysqlLeaderElector struct {
-	endpoint string
-	db       *gorm.DB
+	id string
+	db *gorm.DB
 }
 
-func NewLeaderElector(port string, db *gorm.DB) Interface {
+func NewLeaderElector(id string, db *gorm.DB) Interface {
 	if db == nil {
 		panic("db is nil")
 	}
@@ -24,10 +24,12 @@ func NewLeaderElector(port string, db *gorm.DB) Interface {
 	if err != nil {
 		panic(err)
 	}
-	endpoint := net.JoinHostPort(ip, port)
-	log.Println("ip:", ip, "port:", port, "endpoint:", endpoint)
+	if id == "" {
+		id = ip
+	}
+	log.Printf("new mysqlLeaderElector id:%s ip:%s", id, ip)
 
-	return &mysqlLeaderElector{endpoint: endpoint, db: db}
+	return &mysqlLeaderElector{id: id, db: db}
 }
 
 func (m *mysqlLeaderElector) Leader() (*LeaderElection, error) {
@@ -40,7 +42,7 @@ func (m *mysqlLeaderElector) Leader() (*LeaderElection, error) {
 	}
 	return &LeaderElection{
 		Anchor:         leader.Anchor,
-		Endpoint:       leader.Endpoint,
+		IP:             leader.IP,
 		LastSeenActive: leader.LastSeenActive,
 		MasterID:       leader.MasterID,
 	}, nil
@@ -50,22 +52,42 @@ func (m *mysqlLeaderElector) AmILeader(leader *LeaderElection) bool {
 	if m == nil || leader == nil {
 		return false
 	}
-	return m.endpoint == leader.Endpoint
+	return m.id == leader.MasterID
 }
 
 func (m *mysqlLeaderElector) AttemptElection() {
-	sql := `
-		INSERT IGNORE INTO devops.leader_election (anchor, endpoint, last_seen_active)
-		VALUES (1, ?, NOW())
-		ON DUPLICATE KEY UPDATE
-			endpoint = IF(last_seen_active < NOW() - INTERVAL 15 SECOND, VALUES(endpoint), endpoint),
-			last_seen_active = IF(endpoint = VALUES(endpoint), VALUES(last_seen_active), last_seen_active)
-	`
 	for {
-		err := m.db.Exec(sql, m.endpoint).Error
-		if err != nil {
-			log.Println("attemptElection error:", err)
-		}
+
+		m.db.Transaction(func(tx *gorm.DB) error {
+			// 1. 查询当前的选举记录
+			var leader LeaderElectionPO
+			// 当前判断是否是leader直接查询的数据库，如果有缓存选举需要是串行的(加上.Clauses(clause.Locking{Strength: "UPDATE"}))
+			err := tx.Where("anchor = ?", 1).First(&leader).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+				return tx.Create(&LeaderElectionPO{
+					Anchor:         1,
+					MasterID:       m.id,
+					LastSeenActive: time.Now(),
+				}).Error
+			}
+			// 查询到记录
+			if leader.LastSeenActive.Before(time.Now().Add(-15 * time.Second)) {
+				// 超过15秒没更新，可以抢占
+				leader.MasterID = m.id
+				leader.LastSeenActive = time.Now()
+				return tx.Where("anchor = ?", 1).Updates(&leader).Error
+			} else if leader.MasterID == m.id {
+				// 已经是leader，更新活跃时间
+				leader.MasterID = ""
+				leader.LastSeenActive = time.Now()
+				return tx.Where("anchor = ?", 1).Updates(&leader).Error
+			}
+			return nil
+		})
+
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -73,7 +95,7 @@ func (m *mysqlLeaderElector) AttemptElection() {
 type LeaderElectionPO struct {
 	Anchor         int
 	MasterID       string
-	Endpoint       string
+	IP             string
 	LastSeenActive time.Time
 }
 
