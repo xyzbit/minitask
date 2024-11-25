@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	stderr "errors"
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/xyzbit/minitaskx/core/discover"
 	"github.com/xyzbit/minitaskx/core/model"
 	"github.com/xyzbit/minitaskx/core/taskrepo"
-	"github.com/xyzbit/minitaskx/pkg/log"
 )
 
 type Worker struct {
@@ -22,17 +24,17 @@ type Worker struct {
 	port int
 
 	// 记录任务当前实际运行状态
-	// TODO 这里使用syncmap 效率较低读写平均，task_key -> run_status
 	taskStatus sync.Map
 	// 任务执行器，worker 会管理它们的生命周期
 	// task_key -> executor
-	executors       sync.Map
-	executorResults sync.Map
+	executors            sync.Map
+	executorResults      sync.Map
+	executorInsideRunNum atomic.Int32
 
 	discover discover.Interface
 	taskRepo taskrepo.Interface
 
-	logger log.Logger
+	opts *options
 }
 
 func NewWorker(
@@ -41,28 +43,40 @@ func NewWorker(
 	port int,
 	discover discover.Interface,
 	taskRepo taskrepo.Interface,
-
-	logger log.Logger,
+	opts ...Option,
 ) *Worker {
+	o := newOptions(opts...)
 	w := &Worker{
 		id:       id,
 		ip:       ip,
 		port:     port,
 		discover: discover,
 		taskRepo: taskRepo,
-		logger:   logger,
+		opts:     o,
 	}
 
 	w.initTransitionFuncs()
 	return w
 }
 
+// 'Run' will run the worker program.
+// You can control the program to exit gracefully through the context's 'cancel and timeout'.
 func (w *Worker) Run(ctx context.Context) error {
+	// run async data reporting gorutine
+	go w.reportResourceUsage(w.opts.reportResourceInterval)
+	go w.syncRealStatusToTaskRecord(w.opts.syncRealStatusInterval)
+
+	// run the main executor control loop.
+	// wait until context canceled
+	return w.run(ctx)
+}
+
+func (w *Worker) run(ctx context.Context) error {
+	// register instance
 	metadata, err := w.generateInstanceMetadata()
 	if err != nil {
 		return fmt.Errorf("生成实例元数据失败: %v", err)
 	}
-
 	success, err := w.discover.Register(discover.Instance{
 		Ip:       w.ip,
 		Port:     uint64(w.port),
@@ -76,78 +90,94 @@ func (w *Worker) Run(ctx context.Context) error {
 	if !success {
 		return fmt.Errorf("注册实例失败")
 	}
-	defer func() {
-		_, err := w.discover.UnRegister(discover.Instance{
-			Ip:   w.ip,
-			Port: uint64(w.port),
-		})
-		if err != nil {
-			w.logger.Error("注销实例失败: %v", err)
-		}
-	}()
 
+	// generate instance id if not exist
 	if w.id == "" {
-		err = w.setInstanceID()
-		if err != nil {
-			return fmt.Errorf("设置实例 ID 失败: %v", err)
+		if err := w.setInstanceID(); err != nil {
+			return fmt.Errorf("生成实例 ID 失败: %v", err)
 		}
 	}
 
-	go w.reportResourceUsage(5 * time.Second)
-	go w.syncRealStatusToTaskRecord(3 * time.Second)
+	// start run
+	w.opts.logger.Info("Worker[%s] 开始运行...", w.id)
 
-	return w.run(ctx)
-}
-
-func (w *Worker) run(ctx context.Context) error {
-	w.logger.Info("开始运行...", w.id)
-
-	execTicker := time.NewTicker(1 * time.Second)
+	execTicker := time.NewTicker(w.opts.runInterval)
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			// cancel signal watch.
+			stopCtx := context.Background()
+			// prepare timeout context if need.
+			if w.opts.shutdownTimeout > 0 {
+				var cancel context.CancelFunc
+				stopCtx, cancel = context.WithTimeout(stopCtx, w.opts.shutdownTimeout)
+				defer cancel()
+			}
+			// graceful shutdown.
+			_, rerr := w.discover.UnRegister(discover.Instance{
+				Ip:   w.ip,
+				Port: uint64(w.port),
+			})
+			serr := w.shutdown(stopCtx)
+			return stderr.Join(rerr, serr)
 		case <-execTicker.C:
-			wantTaskRuns, err := w.loadRunnableTasks(ctx)
-			if err != nil {
-				w.logger.Error("加载可执行任务失败: %v", w.id, err)
-				continue
-			}
-			w.logger.Info("加载到 %d 个可执行任务", len(wantTaskRuns))
-
-			for _, want := range wantTaskRuns {
-				realRunStatus := w.getRealRunStatus(want.TaskKey)
-
-				if noNeedStatusSync(realRunStatus, want.WantRunStatus) {
-					continue
-				}
-				exist, err := w.handleExecptionIfExist(ctx, want.TaskKey)
-				if err != nil {
-					w.logger.Error("任务[%s] 处理异常失败: %v", w.id, want.TaskKey, err)
-					continue
-				}
-				if exist {
-					continue
-				}
-
-				runStatusSync, err := model.GetTaskStatusTransitionFunc(realRunStatus, want.WantRunStatus)
-				if err != nil {
-					w.logger.Error("任务[%s] 获取同步状态函数失败: %v", w.id, want.TaskKey, err)
-					continue
-				}
-				if err := runStatusSync(ctx, want.TaskKey); err != nil {
-					w.logger.Error("任务[%s] 同步状态失败: %v", w.id, want.TaskKey, err)
-					continue
-				}
-			}
+			w.loadAndRunTasks(ctx)
 		}
 	}
 }
 
-func noNeedStatusSync(real, want model.TaskStatus) bool {
-	return real == want ||
-		real.IsFinalStatus() ||
-		real.IsWaitStatus()
+func (w *Worker) shutdown(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			waitNum := w.executorInsideRunNum.Load()
+			if waitNum == 0 {
+				w.opts.logger.Info("waiting for all executor goroutine to exit finshed!")
+				return nil
+			}
+			w.opts.logger.Debug("waiting for all executor goroutine to exit, waitNum: %d", waitNum)
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+}
+
+func (w *Worker) loadAndRunTasks(ctx context.Context) {
+	wantTaskRuns, err := w.loadRunnableTasks(ctx)
+	if err != nil {
+		w.opts.logger.Error("Worker[%s] 加载可执行任务失败: %v", w.id, err)
+		return
+	}
+	w.opts.logger.Info("Worker[%s] 加载到 %d 个可执行任务", w.id, len(wantTaskRuns))
+
+	for _, want := range wantTaskRuns {
+		realRunStatus := w.getRealRunStatus(want.TaskKey)
+
+		if noNeedStatusSync(realRunStatus, want.WantRunStatus) {
+			w.opts.logger.Debug("Worker[%s] 任务[%s] 实际状态:%s 期望状态:%s 无需同步", w.id, want.TaskKey, realRunStatus, want.WantRunStatus)
+			continue
+		}
+		exist, err := w.handleExecptionIfExist(ctx, want.TaskKey)
+		if err != nil {
+			w.opts.logger.Error("Worker[%s] 任务[%s] 处理异常失败: %v", w.id, want.TaskKey, err)
+			continue
+		}
+		if exist {
+			w.opts.logger.Debug("Worker[%s] 任务[%s] 异常状态处理成功", w.id, want.TaskKey)
+			continue
+		}
+
+		runStatusSync, err := model.GetTaskStatusTransitionFunc(realRunStatus, want.WantRunStatus)
+		if err != nil {
+			w.opts.logger.Error("Worker[%s] 任务[%s] 获取同步状态函数失败: %v", w.id, want.TaskKey, err)
+			continue
+		}
+		if err := runStatusSync(ctx, want.TaskKey); err != nil {
+			w.opts.logger.Error("Worker[%s] 任务[%s] 同步状态失败: %v", w.id, want.TaskKey, err)
+			continue
+		}
+	}
 }
 
 func (w *Worker) handleExecptionIfExist(ctx context.Context, taskKey string) (exist bool, err error) {
@@ -155,7 +185,6 @@ func (w *Worker) handleExecptionIfExist(ctx context.Context, taskKey string) (ex
 	if !real.IsExecptionStatus() {
 		return false, nil
 	}
-	w.logger.Info("任务[%s] 处理状态异常: %s", taskKey, real)
 
 	switch real {
 	case model.TaskStatusExecptionRun:
@@ -198,7 +227,7 @@ func (w *Worker) setInstanceID() error {
 		time.Sleep(1 * time.Second)
 		instances, err := w.discover.GetAvailableInstances()
 		if err != nil {
-			log.Error("获取实例列表失败: %v", err)
+			w.opts.logger.Error("获取实例列表失败: %v", err)
 			continue
 		}
 
@@ -220,7 +249,7 @@ func (w *Worker) reportResourceUsage(interval time.Duration) {
 	for {
 		metadata, err := w.generateInstanceMetadata()
 		if err != nil {
-			w.logger.Error("获取资源使用情况失败: %v", err)
+			w.opts.logger.Error("获取资源使用情况失败: %v", err)
 			continue
 		}
 
@@ -232,7 +261,7 @@ func (w *Worker) reportResourceUsage(interval time.Duration) {
 			Metadata: metadata,
 		})
 		if err != nil {
-			w.logger.Error("更新服务实例元数据失败: %v", err)
+			w.opts.logger.Error("更新服务实例元数据失败: %v", err)
 		}
 
 		time.Sleep(interval + time.Duration(rand.Intn(500))*time.Millisecond)
@@ -250,22 +279,27 @@ func (w *Worker) syncRealStatusToTaskRecord(interval time.Duration) {
 		})
 
 		for taskKey, status := range realRunStatusMap {
+			w.opts.logger.Debug("任务[%s], 状态同步中, 运行状态为[%s]", taskKey, status)
 			if !status.IsFinalStatus() {
 				err := w.taskRepo.UpdateTaskStatus(context.Background(), taskKey, status)
 				if err != nil {
-					w.logger.Error("update task status failed %+v", err)
+					w.opts.logger.Error("update task status failed %+v", err)
 				}
-				continue
+			} else {
+				// in final status
+				result := w.getExecutorResult(taskKey)
+				if err := w.taskRepo.FinshTaskTX(context.Background(), taskKey, status, result); err != nil {
+					w.opts.logger.Error("finish task failed %+v", err)
+					continue
+				}
+				w.taskStatus.Delete(taskKey)
+				w.executors.Delete(taskKey)
+				w.executorResults.Delete(taskKey)
 			}
-			// in final status
-			result := w.getExecutorResult(taskKey)
-			if err := w.taskRepo.FinshTaskTX(context.Background(), taskKey, status, result); err != nil {
-				w.logger.Error("finish task failed %+v", err)
-				continue
+
+			if isExecutorHasExited(status) {
+				w.executorInsideRunNum.Add(-1)
 			}
-			w.taskStatus.Delete(taskKey)
-			w.executors.Delete(taskKey)
-			w.executorResults.Delete(taskKey)
 		}
 
 		time.Sleep(interval + time.Duration(rand.Intn(500))*time.Millisecond)
@@ -304,4 +338,10 @@ func (w *Worker) setRealRunStatusCAS(taskKey string, old, new model.TaskStatus) 
 		return w.taskStatus.CompareAndDelete(taskKey, old)
 	}
 	return w.taskStatus.CompareAndSwap(taskKey, old, new)
+}
+
+func noNeedStatusSync(real, want model.TaskStatus) bool {
+	return real == want ||
+		real.IsFinalStatus() ||
+		real.IsWaitStatus()
 }

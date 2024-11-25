@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/xyzbit/minitaskx/core/discover"
 	"github.com/xyzbit/minitaskx/core/executor"
@@ -58,7 +59,10 @@ func main() {
 		field = zapcore.Field{Key: "worker_id", String: id, Type: zapcore.StringType}
 	}
 	logger := example.NewLogger(field)
-	worker := worker.NewWorker(id, ip, port, nacosDiscover, taskrepo, logger)
+	worker := worker.NewWorker(
+		id, ip, port, nacosDiscover, taskrepo,
+		worker.WithLogger(logger), worker.WithShutdownTimeout(15*time.Second),
+	)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"slices"
 
 	"github.com/pkg/errors"
 	"github.com/xyzbit/minitaskx/core/executor"
@@ -47,24 +48,22 @@ func (w *Worker) runTask(ctx context.Context, taskKey string) error {
 
 	w.executors.Store(taskKey, exe)
 	w.setRealRunStatus(taskKey, model.TaskStatusRunning)
+	if exe.InsideWorker() {
+		w.executorInsideRunNum.Add(1)
+	}
 
 	concurrency.SafeGoWithRecoverFunc(
 		func() {
 			for {
 				result := exe.Execute(ctx, task)
 				if result.Status == executor.ExecStatusError {
-					w.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Msg)
+					w.opts.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Msg)
 					continue
 				}
 
-				runStatus := model.TaskStatusSuccess
-				switch result.Status {
-				case executor.ExecStatusPaused:
-					runStatus = model.TaskStatusPaused
-				case executor.ExecStatusSuccess:
-					runStatus = model.TaskStatusSuccess
-				case executor.ExecStatusFail:
-					runStatus = model.TaskStatusFailed
+				exist, runStatus := fromExecutorStatus(result.Status)
+				if !exist {
+					w.opts.logger.Error("任务[%s], 执行器返回异常状态[%s]不支持, 设置为失败", taskKey, result.Status)
 				}
 
 				w.setRealRunStatus(taskKey, runStatus)
@@ -151,4 +150,32 @@ func (w *Worker) setSuccessStatus(_ context.Context, taskKey string) error {
 func (w *Worker) setFailedStatus(_ context.Context, taskKey string) error {
 	w.setRealRunStatus(taskKey, model.TaskStatusFailed)
 	return nil
+}
+
+// 是否执行者程序已经退出.
+func isExecutorHasExited(taskStatus model.TaskStatus) bool {
+	return slices.Contains([]model.TaskStatus{
+		model.TaskStatusWaitPaused,
+		model.TaskStatusShutdown,
+		model.TaskStatusSuccess,
+		model.TaskStatusFailed,
+	}, taskStatus)
+}
+
+func fromExecutorStatus(s executor.ExecStatus) (bool, model.TaskStatus) {
+	runStatus := model.TaskStatusFailed
+	exist := true
+	switch s {
+	case executor.ExecStatusPaused:
+		runStatus = model.TaskStatusPaused
+	case executor.ExecStatusSuccess:
+		runStatus = model.TaskStatusSuccess
+	case executor.ExecStatusFail:
+		runStatus = model.TaskStatusFailed
+	case executor.ExecStatusShutdown:
+		runStatus = model.TaskStatusShutdown
+	default:
+		exist = false
+	}
+	return exist, runStatus
 }

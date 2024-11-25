@@ -36,15 +36,22 @@ func (e *Executor) Execute(ctx context.Context, task *model.Task) executor.Resul
 	e.status.Store(statusRunning)
 
 	for {
-		s := e.status.Load()
-		if s == statusStop || s == statusPaused {
-			log.Info("executor is stop or paused...")
+		select {
+		case <-ctx.Done():
 			return executor.Result{
-				Status: lo.If(s == statusPaused, executor.ExecStatusPaused).Else(executor.ExecStatusSuccess),
+				Status: executor.ExecStatusShutdown,
 			}
-		}
+		default:
+			s := e.status.Load()
+			if s == statusStop || s == statusPaused {
+				log.Info("executor is stop or paused...")
+				return executor.Result{
+					Status: lo.If(s == statusPaused, executor.ExecStatusPaused).Else(executor.ExecStatusSuccess),
+				}
+			}
 
-		log.Info("executor is running...")
+			log.Info("executor is running...")
+		}
 		time.Sleep(time.Second * 3)
 	}
 }
@@ -57,4 +64,8 @@ func (e *Executor) Stop(ctx context.Context) error {
 func (e *Executor) Pause(ctx context.Context) error {
 	e.status.Store(statusPaused)
 	return nil
+}
+
+func (e *Executor) InsideWorker() bool {
+	return true
 }
