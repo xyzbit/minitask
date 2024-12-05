@@ -19,7 +19,7 @@ const (
 	TaskStatusWaitStop       TaskStatus = "wait_stopped"
 	TaskStatusSuccess        TaskStatus = "success"
 	TaskStatusFailed         TaskStatus = "failed"
-	TaskStatusShutdown       TaskStatus = "shutdown" // 表示由于 worker 退出导致的临时任务停止, 只有运行在worker内部的 executor 会有该状态
+	TaskStatusStop           TaskStatus = "stop"
 
 	// 调度异常
 	TaskStatusExecptionRun   TaskStatus = "execption_run"

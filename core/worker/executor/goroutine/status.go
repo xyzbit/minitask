@@ -1,0 +1,63 @@
+package goroutine
+
+import (
+	"github.com/xyzbit/minitaskx/core/model"
+)
+
+func (e *Executor) syncRunResult(taskKey string, err error) {
+	cloneTask := e.getTask(taskKey)
+	cloneTask.Status = model.TaskStatusSuccess
+	if err != nil {
+		cloneTask.Status = model.TaskStatusFailed
+		cloneTask.Msg = err.Error()
+	}
+	e.syncResultFn(cloneTask)
+	e.setTask(taskKey, cloneTask)
+}
+
+func (e *Executor) syncPauseResult(taskKey string) {
+	cloneTask := e.getTask(taskKey)
+	cloneTask.Status = model.TaskStatusPaused
+	e.syncResultFn(cloneTask)
+	e.setTask(taskKey, cloneTask)
+}
+
+func (e *Executor) syncResumeResult(taskKey string) {
+	cloneTask := e.getTask(taskKey)
+	cloneTask.Status = model.TaskStatusRunning
+	e.syncResultFn(cloneTask)
+	e.setTask(taskKey, cloneTask)
+}
+
+func (e *Executor) syncStopResult(taskKey string) {
+	cloneTask := e.getTask(taskKey)
+	cloneTask.Status = model.TaskStatusStop
+	e.syncResultFn(cloneTask)
+	e.setTask(taskKey, cloneTask)
+}
+
+func (e *Executor) getTask(taskKey string) *model.Task {
+	e.taskrw.RLock()
+	defer e.taskrw.RUnlock()
+	t, ok := e.tasks[taskKey]
+	if !ok {
+		return nil
+	}
+	return t.Clone()
+}
+
+func (e *Executor) setTask(taskKey string, task *model.Task) {
+	e.taskrw.Lock()
+	defer e.taskrw.Unlock() // TODO 这里实践一下是不是只有新增和遍历需要加锁
+	e.tasks[taskKey] = task
+}
+
+func (e *Executor) listTasks() []*model.Task {
+	e.taskrw.RLock()
+	defer e.taskrw.RUnlock()
+	tasks := make([]*model.Task, 0)
+	for _, t := range e.tasks {
+		tasks = append(tasks, t.Clone())
+	}
+	return tasks
+}

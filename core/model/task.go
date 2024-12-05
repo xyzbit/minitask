@@ -13,8 +13,27 @@ type Task struct {
 	Staints   map[string]string
 	Extra     map[string]string
 	Status    TaskStatus
+	Msg       string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+func (t *Task) Clone() *Task {
+	return &Task{
+		ID:        t.ID,
+		TaskKey:   t.TaskKey,
+		BizID:     t.BizID,
+		BizType:   t.BizType,
+		Type:      t.Type,
+		Payload:   t.Payload,
+		Labels:    t.Labels,
+		Staints:   t.Staints,
+		Extra:     t.Extra,
+		Status:    t.Status,
+		Msg:       t.Msg,
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
+	}
 }
 
 type TaskRun struct {

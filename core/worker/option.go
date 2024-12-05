@@ -3,7 +3,7 @@ package worker
 import (
 	"time"
 
-	"github.com/xyzbit/minitaskx/pkg/log"
+	"github.com/xyzbit/minitaskx/core/components/log"
 )
 
 type options struct {

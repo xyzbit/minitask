@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xyzbit/minitaskx/core/discover"
-	"github.com/xyzbit/minitaskx/core/executor"
-	"github.com/xyzbit/minitaskx/core/taskrepo/mysql"
+	"github.com/xyzbit/minitaskx/contrib/discover/nacos"
+	"github.com/xyzbit/minitaskx/contrib/taskrepo/mysql"
+	"github.com/xyzbit/minitaskx/core/components/executor"
 	"github.com/xyzbit/minitaskx/core/worker"
 	"github.com/xyzbit/minitaskx/example"
-	"github.com/xyzbit/minitaskx/pkg"
+	"github.com/xyzbit/minitaskx/internal/util"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -33,7 +33,7 @@ func init() {
 }
 
 func main() {
-	nacosDiscover, err := discover.NewNacosDiscover(discover.NacosConfig{
+	nacosDiscover, err := nacos.NewNacosDiscover(nacos.NacosConfig{
 		IpAddr:      "localhost",
 		Port:        8848,
 		ServiceName: "example-workers",
@@ -47,7 +47,7 @@ func main() {
 
 	taskrepo := mysql.NewTaskRepo(example.NewGormDB())
 
-	ip, err := pkg.GlobalUnicastIPString()
+	ip, err := util.GlobalUnicastIPString()
 	if err != nil {
 		panic(err)
 	}

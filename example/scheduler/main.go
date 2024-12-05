@@ -13,10 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xyzbit/minitaskx/core/discover"
-	"github.com/xyzbit/minitaskx/core/election"
+	"github.com/xyzbit/minitaskx/contrib/discover/nacos"
+	"github.com/xyzbit/minitaskx/contrib/election/mysql"
+	repo "github.com/xyzbit/minitaskx/contrib/taskrepo/mysql"
 	"github.com/xyzbit/minitaskx/core/scheduler"
-	repo "github.com/xyzbit/minitaskx/core/taskrepo/mysql"
 	"github.com/xyzbit/minitaskx/example"
 )
 
@@ -28,7 +28,7 @@ func init() {
 }
 
 func main() {
-	nacosDiscover, err := discover.NewNacosDiscover(discover.NacosConfig{
+	nacosDiscover, err := nacos.NewNacosDiscover(nacos.NacosConfig{
 		IpAddr:      "localhost",
 		Port:        8848,
 		ServiceName: "example-workers",
@@ -46,7 +46,7 @@ func main() {
 	_ = example.NewLogger()
 
 	s, err := scheduler.NewScheduler(
-		election.NewLeaderElector(port, example.NewGormDB()),
+		mysql.NewLeaderElector(port, example.NewGormDB()),
 		nacosDiscover,
 		taskRepo,
 	)

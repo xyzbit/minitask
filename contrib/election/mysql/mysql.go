@@ -1,11 +1,11 @@
-package election
+package mysql
 
 import (
 	"errors"
-	"log"
 	"time"
 
-	"github.com/xyzbit/minitaskx/pkg"
+	"github.com/xyzbit/minitaskx/core/components/election"
+	"github.com/xyzbit/minitaskx/internal/util"
 
 	"gorm.io/gorm"
 )
@@ -15,24 +15,23 @@ type mysqlLeaderElector struct {
 	db *gorm.DB
 }
 
-func NewLeaderElector(id string, db *gorm.DB) Interface {
+func NewLeaderElector(id string, db *gorm.DB) election.Interface {
 	if db == nil {
 		panic("db is nil")
 	}
 
-	ip, err := pkg.GlobalUnicastIPString()
+	ip, err := util.GlobalUnicastIPString()
 	if err != nil {
 		panic(err)
 	}
 	if id == "" {
 		id = ip
 	}
-	log.Printf("new mysqlLeaderElector id:%s ip:%s", id, ip)
 
 	return &mysqlLeaderElector{id: id, db: db}
 }
 
-func (m *mysqlLeaderElector) Leader() (*LeaderElection, error) {
+func (m *mysqlLeaderElector) Leader() (*election.LeaderElection, error) {
 	var leader LeaderElectionPO
 	err := m.db.Model(&LeaderElectionPO{}).
 		Where("anchor = ?", 1).
@@ -40,7 +39,7 @@ func (m *mysqlLeaderElector) Leader() (*LeaderElection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &LeaderElection{
+	return &election.LeaderElection{
 		Anchor:         leader.Anchor,
 		IP:             leader.IP,
 		LastSeenActive: leader.LastSeenActive,
@@ -48,7 +47,7 @@ func (m *mysqlLeaderElector) Leader() (*LeaderElection, error) {
 	}, nil
 }
 
-func (m *mysqlLeaderElector) AmILeader(leader *LeaderElection) bool {
+func (m *mysqlLeaderElector) AmILeader(leader *election.LeaderElection) bool {
 	if m == nil || leader == nil {
 		return false
 	}
@@ -57,7 +56,6 @@ func (m *mysqlLeaderElector) AmILeader(leader *LeaderElection) bool {
 
 func (m *mysqlLeaderElector) AttemptElection() {
 	for {
-
 		m.db.Transaction(func(tx *gorm.DB) error {
 			// 1. 查询当前的选举记录
 			var leader LeaderElectionPO

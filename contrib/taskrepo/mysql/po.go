@@ -18,6 +18,7 @@ type Task struct {
 	Staints   *string   `gorm:"column:staints;type:json;comment:任务污点"`
 	Extra     *string   `gorm:"column:extra"`
 	Status    string    `gorm:"column:status;not null;comment:pending scheduled running|puase success failed"`
+	Msg       string    `gorm:"column:msg"`
 	Result    *string   `gorm:"column:result;type:json;comment:任务结果"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
@@ -54,6 +55,7 @@ func FromTaskModel(t *model.Task) *Task {
 		Type:      t.Type,
 		Payload:   t.Payload,
 		Status:    t.Status.String(),
+		Msg:       t.Msg,
 		CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt,
 	}
@@ -89,6 +91,7 @@ func ToTaskModel(t *Task) *model.Task {
 		Type:      t.Type,
 		Payload:   t.Payload,
 		Status:    model.TaskStatus(t.Status),
+		Msg:       t.Msg,
 		CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt,
 	}

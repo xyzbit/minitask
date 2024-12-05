@@ -5,10 +5,10 @@ import (
 	"slices"
 
 	"github.com/pkg/errors"
-	"github.com/xyzbit/minitaskx/core/executor"
+	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/pkg/concurrency"
-	"github.com/xyzbit/minitaskx/pkg/log"
+	"github.com/xyzbit/minitaskx/core/worker/executor"
+	"github.com/xyzbit/minitaskx/internal/concurrency"
 )
 
 func (w *Worker) initTransitionFuncs() {
@@ -55,7 +55,7 @@ func (w *Worker) runTask(ctx context.Context, taskKey string) error {
 	concurrency.SafeGoWithRecoverFunc(
 		func() {
 			for {
-				result := exe.Execute(ctx, task)
+				result := exe.Run(ctx, task)
 				if result.Status == executor.ExecStatusError {
 					w.opts.logger.Error("任务[%s], 执行异常待重试, err: %v", taskKey, result.Msg)
 					continue
@@ -93,7 +93,7 @@ func (w *Worker) pausedTask(ctx context.Context, taskKey string) error {
 	if !ok {
 		return errors.Errorf("任务[%s] 执行器不存在", taskKey)
 	}
-	e, _ := exec.(executor.Interface)
+	e, _ := exec.(executor.Executor)
 
 	swaped := w.setRealRunStatusCAS(taskKey, realStatus, model.TaskStatusWaitPaused)
 	if !swaped {
@@ -120,7 +120,7 @@ func (w *Worker) stopTask(ctx context.Context, taskKey string) error {
 	if !ok {
 		return errors.Errorf("任务[%s] 执行器不存在", taskKey)
 	}
-	e, _ := exec.(executor.Interface)
+	e, _ := exec.(executor.Executor)
 
 	swaped := w.setRealRunStatusCAS(taskKey, realStatus, model.TaskStatusWaitStop)
 	if !swaped {

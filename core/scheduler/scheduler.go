@@ -12,11 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/xyzbit/minitaskx/core/discover"
-	"github.com/xyzbit/minitaskx/core/election"
+	"github.com/xyzbit/minitaskx/core/components/discover"
+	"github.com/xyzbit/minitaskx/core/components/election"
+	"github.com/xyzbit/minitaskx/core/components/taskrepo"
+	"github.com/xyzbit/minitaskx/core/log"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/core/taskrepo"
-	"github.com/xyzbit/minitaskx/pkg/log"
 	"golang.org/x/exp/rand"
 )
 

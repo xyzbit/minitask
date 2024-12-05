@@ -3,7 +3,7 @@ package scheduler
 import (
 	"testing"
 
-	"github.com/xyzbit/minitaskx/core/discover"
+	"github.com/xyzbit/minitaskx/core/components/discover"
 	"github.com/xyzbit/minitaskx/core/model"
 )
 

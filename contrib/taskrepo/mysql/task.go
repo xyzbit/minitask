@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+	"github.com/xyzbit/minitaskx/core/components/taskrepo"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/core/taskrepo"
 	"gorm.io/gorm"
 )
 

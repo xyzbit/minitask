@@ -1,4 +1,4 @@
-package discover
+package nacos
 
 import (
 	"github.com/nacos-group/nacos-sdk-go/clients"
@@ -7,6 +7,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/model"
 	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/samber/lo"
+	"github.com/xyzbit/minitaskx/core/components/discover"
 )
 
 type nacosDiscover struct {
@@ -26,7 +27,7 @@ type NacosConfig struct {
 	LogLevel    string
 }
 
-func NewNacosDiscover(cfg NacosConfig) (Interface, error) {
+func NewNacosDiscover(cfg NacosConfig) (discover.Interface, error) {
 	serverConfigs := []constant.ServerConfig{
 		{
 			IpAddr: cfg.IpAddr,
@@ -60,7 +61,7 @@ func NewNacosDiscover(cfg NacosConfig) (Interface, error) {
 	}, nil
 }
 
-func (s *nacosDiscover) GetAvailableInstances() ([]Instance, error) {
+func (s *nacosDiscover) GetAvailableInstances() ([]discover.Instance, error) {
 	availableWorkers, err := s.nacosClient.SelectInstances(vo.SelectInstancesParam{
 		ServiceName: s.serviceName,
 		GroupName:   s.groupName,
@@ -71,8 +72,8 @@ func (s *nacosDiscover) GetAvailableInstances() ([]Instance, error) {
 		return nil, err
 	}
 
-	return lo.Map(availableWorkers, func(item model.Instance, _ int) Instance {
-		return Instance{
+	return lo.Map(availableWorkers, func(item model.Instance, _ int) discover.Instance {
+		return discover.Instance{
 			Enable:     item.Enable,
 			Healthy:    item.Healthy,
 			InstanceId: item.InstanceId,
@@ -83,7 +84,7 @@ func (s *nacosDiscover) GetAvailableInstances() ([]Instance, error) {
 	}), nil
 }
 
-func (s *nacosDiscover) UpdateInstance(i Instance) error {
+func (s *nacosDiscover) UpdateInstance(i discover.Instance) error {
 	_, err := s.nacosClient.UpdateInstance(vo.UpdateInstanceParam{
 		Ip:          i.Ip,
 		Port:        uint64(i.Port),
@@ -97,14 +98,14 @@ func (s *nacosDiscover) UpdateInstance(i Instance) error {
 	return err
 }
 
-func (s *nacosDiscover) Subscribe(callback func(services []Instance, err error)) error {
+func (s *nacosDiscover) Subscribe(callback func(services []discover.Instance, err error)) error {
 	return s.nacosClient.Subscribe(&vo.SubscribeParam{
 		ServiceName: s.serviceName,
 		GroupName:   s.groupName,
 		Clusters:    []string{s.clusterName},
 		SubscribeCallback: func(services []model.SubscribeService, err error) {
-			svcs := lo.Map(services, func(item model.SubscribeService, _ int) Instance {
-				return Instance{
+			svcs := lo.Map(services, func(item model.SubscribeService, _ int) discover.Instance {
+				return discover.Instance{
 					Enable:     item.Enable,
 					Healthy:    item.Healthy,
 					InstanceId: item.InstanceId,
@@ -118,7 +119,7 @@ func (s *nacosDiscover) Subscribe(callback func(services []Instance, err error))
 	})
 }
 
-func (s *nacosDiscover) Register(i Instance) (bool, error) {
+func (s *nacosDiscover) Register(i discover.Instance) (bool, error) {
 	return s.nacosClient.RegisterInstance(vo.RegisterInstanceParam{
 		Ip:          i.Ip,
 		Port:        uint64(i.Port),
@@ -133,7 +134,7 @@ func (s *nacosDiscover) Register(i Instance) (bool, error) {
 	})
 }
 
-func (s *nacosDiscover) UnRegister(i Instance) (bool, error) {
+func (s *nacosDiscover) UnRegister(i discover.Instance) (bool, error) {
 	return s.nacosClient.DeregisterInstance(vo.DeregisterInstanceParam{
 		Ip:          i.Ip,
 		Port:        uint64(i.Port),

@@ -1,12 +1,12 @@
 package concurrency
 
-import "github.com/xyzbit/minitaskx/pkg/log"
+import "fmt"
 
 func SafeGo(fn func()) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Error("%+v", err)
+				fmt.Printf("error: %+v", err)
 			}
 		}()
 		fn()

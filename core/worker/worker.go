@@ -13,9 +13,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"github.com/xyzbit/minitaskx/core/discover"
+	"github.com/xyzbit/minitaskx/core/components/discover"
+	"github.com/xyzbit/minitaskx/core/components/taskrepo"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/core/taskrepo"
 )
 
 type Worker struct {
