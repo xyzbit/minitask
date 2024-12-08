@@ -1,6 +1,7 @@
 package goroutine
 
 import (
+	"github.com/xyzbit/minitaskx/core/controller/executor"
 	"github.com/xyzbit/minitaskx/core/model"
 )
 
@@ -11,28 +12,40 @@ func (e *Executor) syncRunResult(taskKey string, err error) {
 		cloneTask.Status = model.TaskStatusFailed
 		cloneTask.Msg = err.Error()
 	}
-	e.syncResultFn(cloneTask)
+	e.resultChan <- executor.Event{
+		Type: executor.Deleted,
+		Task: cloneTask,
+	}
 	e.setTask(taskKey, cloneTask)
 }
 
 func (e *Executor) syncPauseResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusPaused
-	e.syncResultFn(cloneTask)
+	e.resultChan <- executor.Event{
+		Type: executor.Updated,
+		Task: cloneTask,
+	}
 	e.setTask(taskKey, cloneTask)
 }
 
 func (e *Executor) syncResumeResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusRunning
-	e.syncResultFn(cloneTask)
+	e.resultChan <- executor.Event{
+		Type: executor.Updated,
+		Task: cloneTask,
+	}
 	e.setTask(taskKey, cloneTask)
 }
 
 func (e *Executor) syncStopResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusStop
-	e.syncResultFn(cloneTask)
+	e.resultChan <- executor.Event{
+		Type: executor.Deleted,
+		Task: cloneTask,
+	}
 	e.setTask(taskKey, cloneTask)
 }
 

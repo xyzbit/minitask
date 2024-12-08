@@ -9,14 +9,12 @@ import (
 	"time"
 
 	"github.com/xyzbit/minitaskx/core/components/log"
+	"github.com/xyzbit/minitaskx/core/controller/executor"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/core/worker/executor"
-	"github.com/xyzbit/minitaskx/core/worker/infomer"
 )
 
 var (
 	_ executor.Executor = (*Executor)(nil)
-	_ infomer.Lister    = (*Executor)(nil)
 )
 
 type taskCtrl struct {
@@ -30,25 +28,20 @@ type Executor struct {
 	running atomic.Bool
 	wg      sync.WaitGroup
 
-	rw         sync.RWMutex
-	tasksCtrls map[string]*taskCtrl // task key <==> status 1: running 2: paused 3: stop
+	rw    sync.RWMutex
+	ctrls map[string]*taskCtrl // task key <==> status 1: running 2: paused 3: stop
 
 	taskrw sync.RWMutex
 	tasks  map[string]*model.Task
 
-	resultChan   chan infomer.Event // send external notifications when execution status changes
-	syncResultFn executor.SyncResultFn
+	resultChan chan executor.Event // send external notifications when execution status changes
 }
 
-func NewExecutor(syncTaskCtrlFn executor.SyncResultFn) (*Executor, error) {
-	if syncTaskCtrlFn == nil {
-		return nil, errors.New("update task func is nil")
-	}
+func NewExecutor() (*Executor, error) {
 	return &Executor{
-		tasksCtrls:   make(map[string]*taskCtrl, 0),
-		tasks:        make(map[string]*model.Task, 0),
-		resultChan:   make(chan infomer.Event, 10),
-		syncResultFn: syncTaskCtrlFn,
+		ctrls:      make(map[string]*taskCtrl, 0),
+		tasks:      make(map[string]*model.Task, 0),
+		resultChan: make(chan executor.Event, 10),
 	}, nil
 }
 
@@ -69,10 +62,6 @@ func (e *Executor) Run(task *model.Task) error {
 				err := fmt.Errorf("task %s panic: %v", key, r)
 				log.Error("%v", err)
 				e.syncRunResult(key, err)
-				e.resultChan <- infomer.Event{
-					Task: task,
-					Type: infomer.Deleted,
-				}
 			}
 			e.delTaskCtrl(key)
 			e.wg.Done()
@@ -122,7 +111,7 @@ func (e *Executor) Resume(taskKey string) error {
 
 func (e *Executor) Shutdown(ctx context.Context) error {
 	// send shutdown notify
-	for _, ch := range e.tasksCtrls {
+	for _, ch := range e.ctrls {
 		ch.shutdownCh <- struct{}{}
 	}
 
@@ -144,7 +133,7 @@ func (e *Executor) List(ctx context.Context) ([]*model.Task, error) {
 	return e.listTasks(), nil
 }
 
-func (e *Executor) ResultChan() <-chan infomer.Event {
+func (e *Executor) ResultChan() <-chan executor.Event {
 	return e.resultChan
 }
 
@@ -188,7 +177,7 @@ func (e *Executor) run(taskKey string) {
 func (e *Executor) initTaskCtrl(taskKey string) {
 	e.rw.Lock()
 	defer e.rw.Unlock()
-	e.tasksCtrls[taskKey] = &taskCtrl{
+	e.ctrls[taskKey] = &taskCtrl{
 		stopCh:     make(chan struct{}, 1),
 		pauseCh:    make(chan struct{}, 1),
 		resumeCh:   make(chan struct{}, 1),
@@ -199,11 +188,11 @@ func (e *Executor) initTaskCtrl(taskKey string) {
 func (e *Executor) getTaskCtrl(taskKey string) *taskCtrl {
 	e.rw.RLock()
 	defer e.rw.RUnlock()
-	return e.tasksCtrls[taskKey]
+	return e.ctrls[taskKey]
 }
 
 func (e *Executor) delTaskCtrl(taskKey string) {
 	e.rw.Lock()
 	defer e.rw.Unlock()
-	delete(e.tasksCtrls, taskKey)
+	delete(e.ctrls, taskKey)
 }

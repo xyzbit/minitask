@@ -4,19 +4,35 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
+
+	"github.com/xyzbit/minitaskx/core/components/log"
 )
 
 // Infomer will maintain cache of actual executor status
 type Infomer struct {
 	running atomic.Bool
-	lw      ListAndWatcher
-	cache   Cache
+
+	cache    threadSafeMap
+	loader   realTaskLoader
+	recorder recorder
+
+	resync time.Duration
 }
 
-func New(lw ListAndWatcher, cache Cache) *Infomer {
+func New(
+	loader realTaskLoader,
+	recorder recorder,
+	resync time.Duration,
+) *Infomer {
+	if resync < time.Second { // min resync interval
+		resync = time.Second
+	}
 	return &Infomer{
-		lw:    lw,
-		cache: cache,
+		cache:    threadSafeMap{items: make(map[string]interface{})},
+		loader:   loader,
+		recorder: recorder,
+		resync:   resync,
 	}
 }
 
@@ -30,8 +46,8 @@ func (i *Infomer) Run(ctx context.Context) error {
 	if err := i.initialSync(ctx); err != nil {
 		return err
 	}
-	// watch task status
-	eventChan := i.lw.ResultChan()
+	// watch task's changes of real status
+	eventChan := i.loader.ResultChan()
 	for {
 		select {
 		case <-ctx.Done():
@@ -40,13 +56,22 @@ func (i *Infomer) Run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			i.cache.Update(event.Task.TaskKey, event.Task)
+			// 1. sync to repo
+			if err := i.recorder.UpdateTask(ctx, event.Task); err != nil {
+				log.Error("[Infomer] UpdateTask(%s) failed: %v", event.Task.TaskKey, err)
+			}
+			// 2. sync to local cache
+			if event.Task.Status.IsFinalStatus() {
+				i.cache.Delete(event.Task.TaskKey)
+			} else {
+				i.cache.Update(event.Task.TaskKey, event.Task)
+			}
 		}
 	}
 }
 
 func (i *Infomer) initialSync(ctx context.Context) error {
-	tasks, err := i.lw.List(ctx)
+	tasks, err := i.loader.List(ctx)
 	if err != nil {
 		return err
 	}

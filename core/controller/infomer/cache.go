@@ -2,17 +2,7 @@ package infomer
 
 import (
 	"sync"
-
-	"github.com/xyzbit/minitaskx/core/model"
 )
-
-type Cache interface {
-	Add(key string, obj *model.Task)
-	Update(key string, obj *model.Task)
-	Delete(key string)
-	Get(key string) (item *model.Task, exists bool)
-	List() []*model.Task
-}
 
 type threadSafeMap struct {
 	lock  sync.RWMutex

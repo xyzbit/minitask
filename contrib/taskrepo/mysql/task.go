@@ -123,7 +123,7 @@ func (t *taskRepoImpl) ListTaskRuns(ctx context.Context) ([]*model.TaskRun, erro
 	}), nil
 }
 
-func (t *taskRepoImpl) FinshTaskTX(ctx context.Context, taskKey string, status model.TaskStatus, result string) error {
+func (t *taskRepoImpl) FinishTaskTX(ctx context.Context, taskKey string, status model.TaskStatus, result string) error {
 	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&Task{}).
 			Where("task_key = ?", taskKey).

@@ -14,8 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xyzbit/minitaskx/core/components/discover"
 	"github.com/xyzbit/minitaskx/core/components/election"
+	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/components/taskrepo"
-	"github.com/xyzbit/minitaskx/core/log"
 	"github.com/xyzbit/minitaskx/core/model"
 	"golang.org/x/exp/rand"
 )

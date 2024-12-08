@@ -40,7 +40,7 @@ func (ts TaskStatus) IsExecptionStatus() bool {
 }
 
 func (ts TaskStatus) IsFinalStatus() bool {
-	return ts == TaskStatusSuccess || ts == TaskStatusFailed
+	return ts == TaskStatusSuccess || ts == TaskStatusFailed || ts == TaskStatusStop
 }
 
 func (ts TaskStatus) CanTransition(nextStatus TaskStatus) error {

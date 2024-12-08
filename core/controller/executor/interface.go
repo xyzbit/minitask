@@ -20,8 +20,21 @@ type Executor interface {
 	// Graceful exit, clean up and wait for resource reclamation and data synchronization to complete before exiting.
 	// The timeout can be controlled through ctx.
 	Shutdown(ctx context.Context) error
+
+	List(ctx context.Context) ([]*model.Task, error)
+	ResultChan() <-chan Event
 }
 
-// SyncResultFn is a callback function used to synchronize executor results.
-// It will be called when the Executor function ends.
-type SyncResultFn func(task *model.Task) error
+type Event struct {
+	Type EventType
+	Task *model.Task
+}
+
+// EventType defines the possible types of events.
+type EventType string
+
+const (
+	Added   EventType = "Added"
+	Updated EventType = "Updated"
+	Deleted EventType = "Deleted"
+)
