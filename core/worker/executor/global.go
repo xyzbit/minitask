@@ -10,7 +10,7 @@ const (
 	resultChBuffer = 16
 )
 
-var executors map[string]Executor
+var executors = make(map[string]Executor)
 
 // TODO 注册时同时写到mysql中，scheduler 可以提前判断任务类型是否支持.
 func RegisterExecutor(taskType string, ce Executor) {
@@ -34,8 +34,8 @@ func List(ctx context.Context) ([]*model.Task, error) {
 	return tasks, nil
 }
 
-func ResultChan() <-chan Event {
-	resultCh := make(chan Event, resultChBuffer)
+func ResultChan() <-chan *model.Task {
+	resultCh := make(chan *model.Task, resultChBuffer)
 	for _, e := range executors {
 		go func(e Executor) {
 			for event := range e.ResultChan() {

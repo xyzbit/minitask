@@ -20,8 +20,7 @@ type Executor interface {
 	// Graceful exit, clean up and wait for resource reclamation and data synchronization to complete before exiting.
 	// The timeout can be controlled through ctx.
 	Shutdown(ctx context.Context) error
-}
 
-// SyncResultFn is a callback function used to synchronize actual task changes.
-// It will be called when the Executor function ends.
-type SyncResultFn func(task *model.Task) error
+	List(ctx context.Context) ([]*model.Task, error)
+	ResultChan() <-chan *model.Task
+}

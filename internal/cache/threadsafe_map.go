@@ -1,35 +1,31 @@
-package infomer
+package cache
 
 import (
 	"sync"
-
-	"github.com/xyzbit/minitaskx/core/model"
 )
 
-type Cache interface {
-	Add(key string, obj *model.Task)
-	Update(key string, obj *model.Task)
-	Delete(key string)
-	Get(key string) (item *model.Task, exists bool)
-	List() []*model.Task
-}
-
-type threadSafeMap struct {
+type ThreadSafeMap struct {
 	lock  sync.RWMutex
 	items map[string]interface{}
 }
 
-func (c *threadSafeMap) Add(key string, obj interface{}) {
+func NewThreadSafeMap() *ThreadSafeMap {
+	return &ThreadSafeMap{
+		items: make(map[string]interface{}),
+	}
+}
+
+func (c *ThreadSafeMap) Add(key string, obj interface{}) {
 	c.Update(key, obj)
 }
 
-func (c *threadSafeMap) Update(key string, obj interface{}) {
+func (c *ThreadSafeMap) Update(key string, obj interface{}) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.items[key] = obj
 }
 
-func (c *threadSafeMap) Delete(key string) {
+func (c *ThreadSafeMap) Delete(key string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if _, exists := c.items[key]; exists {
@@ -37,14 +33,14 @@ func (c *threadSafeMap) Delete(key string) {
 	}
 }
 
-func (c *threadSafeMap) Get(key string) (item interface{}, exists bool) {
+func (c *ThreadSafeMap) Get(key string) (item interface{}, exists bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	item, exists = c.items[key]
 	return item, exists
 }
 
-func (c *threadSafeMap) List() []interface{} {
+func (c *ThreadSafeMap) List() []interface{} {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	list := make([]interface{}, 0, len(c.items))
@@ -54,7 +50,7 @@ func (c *threadSafeMap) List() []interface{} {
 	return list
 }
 
-func (c *threadSafeMap) ListKeys() []string {
+func (c *ThreadSafeMap) ListKeys() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	list := make([]string, 0, len(c.items))
