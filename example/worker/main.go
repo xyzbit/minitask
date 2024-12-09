@@ -1,3 +1,11 @@
+/*
+ * @Author: xiaoyan 1425895909@qq.com
+ * @Date: 2024-12-09 22:41:50
+ * @LastEditors: xiaoyan 1425895909@qq.com
+ * @LastEditTime: 2024-12-09 23:07:16
+ * @FilePath: /minitaskx/example/worker/main.go
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 package main
 
 import (
@@ -12,7 +20,7 @@ import (
 
 	"github.com/xyzbit/minitaskx/contrib/discover/nacos"
 	"github.com/xyzbit/minitaskx/contrib/taskrepo/mysql"
-	"github.com/xyzbit/minitaskx/core/components/executor"
+	"github.com/xyzbit/minitaskx/core/worker/executor"
 	"github.com/xyzbit/minitaskx/core/worker"
 	"github.com/xyzbit/minitaskx/example"
 	"github.com/xyzbit/minitaskx/internal/util"

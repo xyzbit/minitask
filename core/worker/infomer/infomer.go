@@ -37,11 +37,9 @@ func (i *Infomer) Run(ctx context.Context) error {
 	}
 
 	// init and monitor indexer
-	err := i.indexer.initial(ctx)
-	if err != nil {
+	if err := i.indexer.initAndMonitor(ctx); err != nil {
 		return err
 	}
-	go i.indexer.monitor(ctx)
 
 	// compare task has changed
 	execTicker := time.NewTicker(i.opts.runInterval)
@@ -78,21 +76,15 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context) {
 }
 
 func (i *Infomer) loadRunnableTasks(ctx context.Context) ([]*model.TaskRun, error) {
-	taskRuns, err := i.loader.ListRunnableTasks(ctx, i.id)
+	wantTaskRuns, err := i.loader.ListRunnableTasks(ctx, i.id)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	// complete task status
-	i.indexer.
-		w.taskStatus.Range(func(key, value interface{}) bool {
-		if !lo.ContainsBy(taskRuns, func(wantTaskRun *model.TaskRun) bool {
-			return wantTaskRun.TaskKey == key.(string)
-		}) {
-			taskRuns = append(taskRuns, &model.TaskRun{TaskKey: key.(string), WantRunStatus: model.TaskStatusNotExist})
-		}
-		return true
-	})
+	// task 和 taskrun 需要一个统一的结构来承载数据，进行比较，思考一下（感觉）
+	realTasks := i.indexer.listRealTasks()
+	lo.Difference(wantTaskRuns, realTasks)
 
 	return taskRuns, nil
 }

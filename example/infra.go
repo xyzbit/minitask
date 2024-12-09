@@ -3,7 +3,7 @@ package example
 import (
 	"os"
 
-	"github.com/xyzbit/minitaskx/pkg/log"
+	"github.com/xyzbit/minitaskx/core/components/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gorm.io/driver/mysql"
