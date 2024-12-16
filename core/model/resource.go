@@ -21,6 +21,7 @@ const (
 
 	staintPressureCPU = "staint_pressure_cpu"
 	staintPressureMem = "staint_pressure_mem"
+	staintDisable     = "staint_disable" // use for mark temporary offline
 )
 
 func GenerateResourceUsage() (map[string]string, error) {
@@ -49,7 +50,7 @@ func GenerateResourceUsage() (map[string]string, error) {
 }
 
 // 生成污点标签
-func GenerateStaint(ru map[string]string) (map[string]string, error) {
+func GenerateStaint(ru map[string]string, disable bool) (map[string]string, error) {
 	u := ParseResourceUsage(ru)
 	staint := map[string]string{}
 	if u[MemUsageKey] > 85 {
@@ -57,6 +58,9 @@ func GenerateStaint(ru map[string]string) (map[string]string, error) {
 	}
 	if u[MemUsageKey] > 85 {
 		staint[staintPressureCPU] = "high"
+	}
+	if disable {
+		staint[staintDisable] = "true"
 	}
 	return staint, nil
 }

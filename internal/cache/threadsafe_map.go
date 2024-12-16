@@ -15,11 +15,7 @@ func NewThreadSafeMap[T any]() *ThreadSafeMap[T] {
 	}
 }
 
-func (c *ThreadSafeMap[T]) Add(key string, obj T) {
-	c.Update(key, obj)
-}
-
-func (c *ThreadSafeMap[T]) Update(key string, obj T) {
+func (c *ThreadSafeMap[T]) Set(key string, obj T) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.items[key] = obj
@@ -46,6 +42,16 @@ func (c *ThreadSafeMap[T]) List() []T {
 		list = append(list, item)
 	}
 	return list
+}
+
+func (c *ThreadSafeMap[T]) ListKVs() map[string]T {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	kvs := make(map[string]T, len(c.items))
+	for k, v := range c.items {
+		kvs[k] = v
+	}
+	return kvs
 }
 
 func (c *ThreadSafeMap[T]) ListKeys() []string {

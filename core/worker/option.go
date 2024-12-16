@@ -1,4 +1,4 @@
-package infomer
+package worker
 
 import (
 	"time"
@@ -8,7 +8,6 @@ import (
 
 type options struct {
 	reportResourceInterval time.Duration
-	syncRealStatusInterval time.Duration
 	runInterval            time.Duration
 
 	shutdownTimeout time.Duration
@@ -35,12 +34,6 @@ func WithReportResourceInterval(interval time.Duration) Option {
 	}
 }
 
-func WithSyncRealStatusInterval(interval time.Duration) Option {
-	return func(o *options) {
-		o.syncRealStatusInterval = interval
-	}
-}
-
 func WithRunInterval(interval time.Duration) Option {
 	return func(o *options) {
 		o.runInterval = interval
@@ -52,8 +45,8 @@ func newOptions(opts ...Option) *options {
 	o := options{
 		logger:                 log.Global(),
 		reportResourceInterval: 10 * time.Second,
-		syncRealStatusInterval: 2 * time.Second,
 		runInterval:            1 * time.Second,
+		shutdownTimeout:        180 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(&o)

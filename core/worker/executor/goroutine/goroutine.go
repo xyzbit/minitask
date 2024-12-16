@@ -6,27 +6,20 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/core/worker/executor"
 )
 
-func init() {
-	executor.RegisterExecutor("goroutine", newExecutor())
-}
-
 type taskCtrl struct {
-	stopCh     chan struct{}
-	pauseCh    chan struct{}
-	resumeCh   chan struct{}
-	shutdownCh chan struct{}
+	stopCh   chan struct{}
+	pauseCh  chan struct{}
+	resumeCh chan struct{}
+	exitCh   chan struct{}
 }
 
 type Executor struct {
 	running atomic.Bool
-	wg      sync.WaitGroup
 
 	rw    sync.RWMutex
 	ctrls map[string]*taskCtrl // task key <==> status 1: running 2: paused 3: stop
@@ -35,13 +28,17 @@ type Executor struct {
 	tasks  map[string]*model.Task
 
 	resultChan chan *model.Task // send external notifications when execution status changes
+	fn         bizlogic
 }
 
-func newExecutor() *Executor {
+type bizlogic func(task *model.Task) (finshed bool, err error)
+
+func NewExecutor(fn bizlogic) *Executor {
 	return &Executor{
 		ctrls:      make(map[string]*taskCtrl, 0),
 		tasks:      make(map[string]*model.Task, 0),
 		resultChan: make(chan *model.Task, 10),
+		fn:         fn,
 	}
 }
 
@@ -55,20 +52,49 @@ func (e *Executor) Run(task *model.Task) error {
 	e.setTask(key, task)
 	e.initTaskCtrl(key)
 
-	e.wg.Add(1)
 	go func() {
+		var err error
 		defer func() {
-			if r := recover(); r != nil {
-				err := fmt.Errorf("task %s panic: %v", key, r)
+			if err != nil {
 				log.Error("%v", err)
 				e.syncRunResult(key, err)
 			}
 			e.delTaskCtrl(key)
-			e.wg.Done()
 		}()
-		e.run(key)
+
+		finshCh := make(chan struct{}, 1)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("task %s panic: %v", key, r)
+				}
+				finshCh <- struct{}{}
+			}()
+
+			e.run(key)
+		}()
+
+		select {
+		case <-taskCtrl.exitCh:
+			err = fmt.Errorf("task %s force exit", key)
+			return
+		case <-finshCh:
+			return
+		}
 	}()
 
+	return nil
+}
+
+func (e *Executor) Exit(taskKey string) error {
+	ch := e.getTaskCtrl(taskKey)
+	if ch == nil {
+		return errors.New("exit need after run")
+	}
+	if len(ch.stopCh) > 0 {
+		return nil
+	}
+	ch.exitCh <- struct{}{}
 	return nil
 }
 
@@ -109,26 +135,6 @@ func (e *Executor) Resume(taskKey string) error {
 	return nil
 }
 
-func (e *Executor) Shutdown(ctx context.Context) error {
-	// send shutdown notify
-	for _, ch := range e.ctrls {
-		ch.shutdownCh <- struct{}{}
-	}
-
-	// wait all goroutine exit
-	shutdownCh := make(chan struct{})
-	go func() {
-		e.wg.Wait()
-		shutdownCh <- struct{}{}
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-shutdownCh:
-		return nil
-	}
-}
-
 func (e *Executor) List(ctx context.Context) ([]*model.Task, error) {
 	return e.listTasks(), nil
 }
@@ -139,12 +145,8 @@ func (e *Executor) ResultChan() <-chan *model.Task {
 
 func (e *Executor) run(taskKey string) {
 	ctrl := e.getTaskCtrl(taskKey)
-	i := 0
 	for {
 		select {
-		case <-ctrl.shutdownCh:
-			log.Debug("executor be shutdown...")
-			return
 		case <-ctrl.stopCh:
 			log.Debug("executor is stopped...")
 			e.syncStopResult(taskKey)
@@ -152,9 +154,6 @@ func (e *Executor) run(taskKey string) {
 		case <-ctrl.pauseCh:
 			log.Debug("executor is paused...")
 			select {
-			case <-ctrl.shutdownCh:
-				log.Debug("executor be shutdown in pause...")
-				return
 			case <-ctrl.stopCh:
 				log.Debug("executor be stop in pause...")
 				e.syncStopResult(taskKey)
@@ -164,13 +163,17 @@ func (e *Executor) run(taskKey string) {
 				e.syncResumeResult(taskKey)
 			}
 		default:
-			if i > 5 {
+			cloneTask := e.getTask(taskKey)
+			finshed, err := e.fn(cloneTask)
+			if err != nil {
+				e.syncRunResult(taskKey, err)
+				return
+			}
+			if finshed {
 				e.syncRunResult(taskKey, nil)
 				return
 			}
-			log.Info("executor is running(%d)...", i)
 		}
-		time.Sleep(time.Second * 3)
 	}
 }
 
@@ -178,10 +181,10 @@ func (e *Executor) initTaskCtrl(taskKey string) {
 	e.rw.Lock()
 	defer e.rw.Unlock()
 	e.ctrls[taskKey] = &taskCtrl{
-		stopCh:     make(chan struct{}, 1),
-		pauseCh:    make(chan struct{}, 1),
-		resumeCh:   make(chan struct{}, 1),
-		shutdownCh: make(chan struct{}, 1),
+		stopCh:   make(chan struct{}, 1),
+		pauseCh:  make(chan struct{}, 1),
+		resumeCh: make(chan struct{}, 1),
+		exitCh:   make(chan struct{}, 1),
 	}
 }
 

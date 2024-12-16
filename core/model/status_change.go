@@ -1,39 +1,60 @@
 package model
 
 import (
-	"context"
-
 	"github.com/pkg/errors"
+	"github.com/xyzbit/minitaskx/internal/queue"
 )
 
-var changeFuncsMap = make(map[TaskStatus]map[TaskStatus]ChangeFunc)
+var _ queue.UniKey[Change] = Change{}
 
-type Change struct {
-	TaskKey    string
-	Real, Want TaskStatus
+type ChangeType string
+
+const (
+	ChangeCreate ChangeType = "create"
+	ChangeDelete ChangeType = "delete"
+	ChangeResume ChangeType = "resume"
+	ChangePause  ChangeType = "pause"
+	ChangeStop   ChangeType = "stop"
+)
+
+var changeTypesRule = map[TaskStatus]map[TaskStatus]ChangeType{
+	TaskStatusNotExist: {
+		TaskStatusRunning: ChangeCreate,
+	},
+	TaskStatusRunning: {
+		TaskStatusPaused:   ChangePause,
+		TaskStatusStop:     ChangeStop,
+		TaskStatusNotExist: ChangeDelete,
+	},
+	TaskStatusPaused: {
+		TaskStatusRunning:       ChangeResume,
+		TaskStatusExecptionStop: ChangeStop,
+		TaskStatusNotExist:      ChangeDelete,
+	},
 }
 
-type ChangeFunc func(ctx context.Context, taskKey string) error
-
-func RegisterChangeFunc(real, want TaskStatus, fn ChangeFunc) {
-	if _, ok := changeFuncsMap[real]; !ok {
-		changeFuncsMap[real] = make(map[TaskStatus]ChangeFunc)
-	}
-
-	changeFuncsMap[real][want] = fn
-}
-
-func GetChangeFunc(
+func GetChangeType(
 	realRunStatus, wantRunStatus TaskStatus,
-) (ChangeFunc, error) {
-	m, ok := changeFuncsMap[realRunStatus]
+) (ChangeType, error) {
+	m, ok := changeTypesRule[realRunStatus]
 	if !ok {
-		return nil, errors.Errorf("当前状态为[%s], 不支持转换", realRunStatus)
+		return "", errors.Errorf("当前状态为[%s], 不支持转换", realRunStatus)
 	}
 	fid, ok := m[wantRunStatus]
 	if !ok {
-		return nil, errors.Errorf("当前状态[%s] -> 期望运行状态[%s], 不支持转换", realRunStatus, wantRunStatus)
+		return "", errors.Errorf("当前状态[%s] -> 期望运行状态[%s], 不支持转换", realRunStatus, wantRunStatus)
 	}
 
 	return fid, nil
+}
+
+type Change struct {
+	TaskKey    string
+	TaskType   string
+	ChangeType ChangeType
+	Task       *Task
+}
+
+func (c Change) GetUniKey() Change {
+	return Change{TaskKey: c.TaskKey}
 }

@@ -10,8 +10,8 @@
 
 1. 下载项目并进入 example 目录
 ```SQL
-git clone git@github.com:xyzbit/minitaskx.git
-cd ./minitaskx/example
+git clone git@github.com:xyzbit/minitaskx-example.git
+cd ./minitaskx-example
 ```
 
 2. 启动依赖(需要提前安装 docker)

@@ -18,7 +18,7 @@ func (w *Worker) generateInstanceMetadata() (map[string]string, error) {
 		metadata[k] = v
 	}
 
-	staint, err := model.GenerateStaint(ru)
+	staint, err := model.GenerateStaint(ru, false)
 	if err != nil {
 		return nil, err
 	}

@@ -207,12 +207,11 @@ func (q *Typed[T]) Add(item T) {
 		return
 	}
 
-	q.metrics.add(item)
-
-	q.dirty.insert(item)
 	if q.processing.has(item) {
 		return
 	}
+	q.metrics.add(item)
+	q.dirty.insert(item)
 
 	q.queue.Push(item)
 	q.cond.Signal()
@@ -261,10 +260,7 @@ func (q *Typed[T]) Done(item T) {
 	q.metrics.done(item)
 
 	q.processing.delete(item)
-	if q.dirty.has(item) {
-		q.queue.Push(item)
-		q.cond.Signal()
-	} else if q.processing.len() == 0 {
+	if q.processing.len() == 0 {
 		q.cond.Signal()
 	}
 }

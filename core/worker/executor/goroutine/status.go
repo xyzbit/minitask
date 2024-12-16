@@ -48,7 +48,7 @@ func (e *Executor) getTask(taskKey string) *model.Task {
 
 func (e *Executor) setTask(taskKey string, task *model.Task) {
 	e.taskrw.Lock()
-	defer e.taskrw.Unlock() // TODO 这里实践一下是不是只有新增和遍历需要加锁
+	defer e.taskrw.Unlock()
 	e.tasks[taskKey] = task
 }
 

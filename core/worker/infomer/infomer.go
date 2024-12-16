@@ -2,82 +2,74 @@ package infomer
 
 import (
 	"context"
-	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 
+	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/model"
-	"github.com/xyzbit/minitaskx/internal/queque"
+	"github.com/xyzbit/minitaskx/internal/queue"
+	"github.com/xyzbit/minitaskx/pkg/util/retry"
 )
 
 type Infomer struct {
-	id      string
 	running atomic.Bool
 
 	indexer      *Indexer
-	loader       recordLoader
-	recorder     recordUpdater
-	changeQueque queque.TypedInterface[model.Change]
+	recorder     recorder
+	changeQueque queue.TypedInterface[model.Change]
 
-	opts *options
+	logger log.Logger
 }
 
 func New(
-	id string,
 	indexer *Indexer,
-	loader recordLoader,
-	recorder recordUpdater,
-	opts ...Option,
+	recorder recorder,
+	logger log.Logger,
 ) *Infomer {
 	return &Infomer{
-		id:           id,
 		indexer:      indexer,
-		loader:       loader,
 		recorder:     recorder,
-		changeQueque: queque.NewTyped[model.Change](),
-		opts:         newOptions(opts...),
+		changeQueque: queue.NewTyped[model.Change](),
+		logger:       logger,
 	}
 }
 
-func (i *Infomer) ChangeConsumer() ChangeConsumer {
-	return &changeConsumer{
-		infomer: i,
-	}
-}
-
-func (i *Infomer) Run(ctx context.Context) error {
+func (i *Infomer) Run(ctx context.Context, workerID string, runInterval time.Duration) error {
 	swapped := i.running.CompareAndSwap(false, true)
 	if !swapped {
 		return errors.New("infomer already running")
 	}
 
-	// init and monitor indexer
-	if err := i.indexer.initAndMonitor(ctx); err != nil {
-		return err
-	}
+	var wg sync.WaitGroup
 
+	// monitor change result
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		i.monitorChangeResult(ctx)
+	}()
 	// compare task's change and enqueue.
-	go i.enqueueIfTaskChange(ctx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		i.enqueueIfTaskChange(ctx, workerID, runInterval)
+	}()
 
-	go i.monitorChangeResult(ctx)
+	wg.Wait()
+	return nil
+}
 
-	// monitor exit signal.
-	<-ctx.Done()
-	return i.shutdown()
+func (i *Infomer) ChangeConsumer() ChangeConsumer {
+	return &changeConsumer{i: i}
 }
 
 // graceful shutdown.
-func (i *Infomer) shutdown() error {
-	stopCtx := context.Background()
-	if i.opts.shutdownTimeout > 0 {
-		var cancel context.CancelFunc
-		stopCtx, cancel = context.WithTimeout(stopCtx, i.opts.shutdownTimeout)
-		defer cancel()
-	}
-
+// Stop sending new events and wait for old events to be consumed.
+func (i *Infomer) Shutdown(ctx context.Context) error {
 	shutdownCh := make(chan struct{})
 	go func() {
 		i.changeQueque.ShutDownWithDrain()
@@ -85,31 +77,30 @@ func (i *Infomer) shutdown() error {
 	}()
 
 	select {
-	case <-stopCtx.Done():
-		if stopCtx.Err() != nil {
-			i.opts.logger.Error("[Infomer] shutdown timeout: %v", stopCtx.Err())
+	case <-ctx.Done():
+		if ctx.Err() != nil {
+			i.logger.Error("[Infomer] shutdown timeout: %v", ctx.Err())
 		}
-		return stopCtx.Err()
+		return ctx.Err()
 	case <-shutdownCh:
-		i.opts.logger.Info("[Infomer] shutdown success")
+		i.logger.Info("[Infomer] shutdown success")
 		return nil
 	}
 }
 
-func (i *Infomer) enqueueIfTaskChange(ctx context.Context) error {
+func (i *Infomer) enqueueIfTaskChange(ctx context.Context, workerID string, runInterval time.Duration) {
 	for {
 		// load want and real task status
-		wantTaskRuns, err := i.loader.ListRunnableTasks(ctx, i.id)
+		wantTasks, err := i.recorder.ListRunnableTasks(ctx, workerID)
 		if err != nil {
-			i.opts.logger.Error("[Infomer] load task failed: %v", err)
+			i.logger.Error("[Infomer] load task failed: %v", err)
 			continue
 		}
-		realTasks := i.indexer.listRealTasks()
+		realTasks := i.indexer.ListRealTasks()
 
 		// diff get changes
-		changes := diff(wantTaskRuns, realTasks)
-		changesRaw, _ := json.Marshal(changes)
-		i.opts.logger.Info("[Infomer] 期望任务数(%d), 实际任务数(%d), 任务状态变化事件:%s", len(wantTaskRuns), len(realTasks), string(changesRaw))
+		changes := diff(wantTasks, realTasks)
+		i.logger.Info("[Infomer] 期望任务数(%d), 实际任务数(%d), 任务状态变化事件:%s", len(wantTasks), len(realTasks))
 
 		// enqueue
 		for _, change := range changes {
@@ -117,15 +108,29 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context) error {
 		}
 
 		// wait for next
-		time.Sleep(i.opts.runInterval)
+		time.Sleep(runInterval)
 	}
 }
 
-func diff(wants []*model.TaskRun, reals []*model.Task) []model.Change {
-	realMap := lo.KeyBy(reals, func(t *model.Task) string {
-		return t.TaskKey
+func (i *Infomer) monitorChangeResult(ctx context.Context) {
+	i.indexer.SetAfterChange(func(t *model.Task) {
+		i.logger.Info("[Infomer] task %s status changed: %s", t.TaskKey, t.Status)
+
+		if err := retry.Do(func() error {
+			return i.recorder.UpdateTask(ctx, t)
+		}); err != nil {
+			i.logger.Error("[Infomer] UpdateTask(%s) failed: %v", t.TaskKey, err)
+		}
+
+		i.changeQueque.Done(model.Change{TaskKey: t.TaskKey}) // only need task key to mask.
 	})
-	wantMap := lo.KeyBy(wants, func(t *model.TaskRun) string {
+	// monitor real task status
+	i.indexer.Monitor(ctx)
+}
+
+func diff(wants []*model.Task, reals map[string]model.TaskStatus) []model.Change {
+	realMap := reals
+	wantMap := lo.KeyBy(wants, func(t *model.Task) string {
 		return t.TaskKey
 	})
 
@@ -133,29 +138,34 @@ func diff(wants []*model.TaskRun, reals []*model.Task) []model.Change {
 
 	// 1. check create or update
 	for _, want := range wants {
-		real, exists := realMap[want.TaskKey]
+		realStatus, exists := realMap[want.TaskKey]
 		if !exists {
-			changes = append(changes, model.Change{
-				TaskKey: want.TaskKey,
-				Real:    model.TaskStatusNotExist,
-				Want:    want.WantRunStatus,
-			})
-		} else if real.Status != want.WantRunStatus {
-			changes = append(changes, model.Change{
-				TaskKey: want.TaskKey,
-				Real:    real.Status,
-				Want:    want.WantRunStatus,
-			})
+			realStatus = model.TaskStatusNotExist
 		}
+		if realStatus == want.Status {
+			continue
+		}
+
+		changeType, err := model.GetChangeType(realStatus, want.Status)
+		if err != nil {
+			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", want.TaskKey, realStatus, want.Status, err)
+			continue
+		}
+		changes = append(changes, model.Change{
+			TaskKey:    want.TaskKey,
+			TaskType:   want.Type,
+			ChangeType: changeType,
+			Task:       want,
+		})
 	}
 
 	// 2. check delete
-	for _, real := range reals {
-		if _, exists := wantMap[real.TaskKey]; !exists {
+	for taskKey := range reals {
+		if task, exists := wantMap[taskKey]; !exists {
 			changes = append(changes, model.Change{
-				TaskKey: real.TaskKey,
-				Real:    real.Status,
-				Want:    model.TaskStatusNotExist, // 假设有这个状态表示需要删除
+				TaskKey:    task.TaskKey,
+				TaskType:   task.Type,
+				ChangeType: model.ChangeDelete,
 			})
 		}
 	}

@@ -12,11 +12,8 @@ type realTaskLoader interface {
 	ResultChan() <-chan *model.Task
 }
 
-type recordUpdater interface {
-	UpdateTask(ctx context.Context, status *model.Task) error
-}
-
-type recordLoader interface {
+type recorder interface {
+	UpdateTask(ctx context.Context, task *model.Task) error
 	// 获取可运行的任务
-	ListRunnableTasks(ctx context.Context, workerID string) ([]*model.TaskRun, error)
+	ListRunnableTasks(ctx context.Context, workerID string) ([]*model.Task, error)
 }

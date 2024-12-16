@@ -7,22 +7,23 @@ import (
 )
 
 const (
-	resultChBuffer = 16
+	resultChBuffer = 100
 )
 
-var executors = make(map[string]Executor)
+var executors = make(map[string]Interface)
 
-// TODO 注册时同时写到mysql中，scheduler 可以提前判断任务类型是否支持.
-func RegisterExecutor(taskType string, ce Executor) {
+func RegisterExecutor(taskType string, ce Interface) {
 	executors[taskType] = ce
 }
 
-func GetExecutor(taskType string) (Executor, bool) {
+func GetExecutor(taskType string) (Interface, bool) {
 	e, ok := executors[taskType]
 	return e, ok
 }
 
-func List(ctx context.Context) ([]*model.Task, error) {
+type Global struct{}
+
+func (ge *Global) List(ctx context.Context) ([]*model.Task, error) {
 	tasks := make([]*model.Task, 0)
 	for _, e := range executors {
 		ts, err := e.List(ctx)
@@ -34,10 +35,10 @@ func List(ctx context.Context) ([]*model.Task, error) {
 	return tasks, nil
 }
 
-func ResultChan() <-chan *model.Task {
+func (ge *Global) ResultChan() <-chan *model.Task {
 	resultCh := make(chan *model.Task, resultChBuffer)
 	for _, e := range executors {
-		go func(e Executor) {
+		go func(e Interface) {
 			for event := range e.ResultChan() {
 				resultCh <- event
 			}

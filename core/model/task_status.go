@@ -40,7 +40,7 @@ func (ts TaskStatus) IsFinalStatus() bool {
 }
 
 func (ts TaskStatus) CanTransition(nextStatus TaskStatus) error {
-	_, err := GetChangeFunc(ts, nextStatus)
+	_, err := GetChangeType(ts, nextStatus)
 	return err
 }
 
