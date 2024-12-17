@@ -14,13 +14,9 @@ const (
 	TaskStatusWaitPaused     TaskStatus = "wait_paused"
 	TaskStatusPaused         TaskStatus = "paused"
 	TaskStatusWaitStop       TaskStatus = "wait_stopped"
+	TaskStatusStop           TaskStatus = "stop"
 	TaskStatusSuccess        TaskStatus = "success"
 	TaskStatusFailed         TaskStatus = "failed"
-	TaskStatusStop           TaskStatus = "stop"
-
-	TaskStatusExecptionRun   TaskStatus = "execption_run"
-	TaskStatusExecptionPause TaskStatus = "execption_pause"
-	TaskStatusExecptionStop  TaskStatus = "execption_stop"
 )
 
 func (ts TaskStatus) String() string {
@@ -29,10 +25,6 @@ func (ts TaskStatus) String() string {
 
 func (ts TaskStatus) IsWaitStatus() bool {
 	return strings.HasPrefix(ts.String(), "wait_")
-}
-
-func (ts TaskStatus) IsExecptionStatus() bool {
-	return strings.HasPrefix(ts.String(), "execption_")
 }
 
 func (ts TaskStatus) IsFinalStatus() bool {

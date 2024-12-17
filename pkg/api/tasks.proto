@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package minitask.pkg.api.v1;
+import "google/api/annotations.proto";
+
+option go_package = "github.com/xyzbit/minitaskx/pkg/api/v1;v1";
+
+service TaskService {
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
+    option (google.api.http) = {
+      get: "/v1/tasks/list"
+    };
+  }
+
+  rpc CreateTask(CreateTaskRequest) returns (Task) {
+    option (google.api.http) = {
+      post: "/v1/tasks/create"
+      body: "Task"
+    };
+  }
+
+  rpc OperateTask(OperateTaskRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/tasks/operate"
+      body: "Task"
+    };
+  }
+}
+
+enum TaskStatus {
+    // 未知状态
+    TASK_STATUS_UNKOWN = 0;
+    // 等待调度状态
+    TASK_STATUS_WAIT_SCHEDULING = 1;
+    // 等待运行状态
+    TASK_STATUS_WAIT_RUNNING = 2;
+    // 运行中状态
+    TASK_STATUS_RUNNING = 3;
+    // 等待暂停状态
+    TASK_STATUS_WAIT_PAUSED = 4;
+    // 已暂停状态
+    TASK_STATUS_PAUSED = 5;
+    // 等待停止状态
+    TASK_STATUS_WAIT_STOPPED = 6;
+    // 已停止状态
+    TASK_STATUS_STOP = 7;
+    // 成功完成状态
+    TASK_STATUS_SUCCESS = 8;
+    // 执行失败状态
+    TASK_STATUS_FAILED = 9;
+  }
+
+message Task {
+    int64 id = 1;
+    string task_key = 2;
+    // biz unique flag, you can search by this field after create.
+    string biz_id = 3;
+    // biz type, you can search by this field after create.
+    string biz_type = 4;
+    // task type, you can search by this field after create.
+    string type = 5;
+    string payload = 6;
+    map<string, string> labels = 7;
+    map<string, string> staints = 8;
+    map<string, string> extra = 9;
+    TaskStatus status = 10;
+    string msg = 11;
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
+  }
+
+message ListTasksRequest {
+  // eg. "a,b,c"
+  string biz_ids = 1;
+  string biz_type = 2;
+  string type = 3;
+  // default 20
+  int32 limit = 4;
+  // default 0
+  int32 offset = 5;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+}
+
+message CreateTaskRequest {
+    string biz_id = 1;  
+    string biz_type = 2;
+    string type = 3;    
+    string payload = 4; 
+}
+
+message OperateTaskRequest {
+  string task_key = 1;
+  // change status, one of TASK_STATUS_PAUSED、TASK_STATUS_STOP、TASK_STATUS_RUNNING.
+  TaskStatus status = 2;
+}

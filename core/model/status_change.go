@@ -27,9 +27,9 @@ var changeTypesRule = map[TaskStatus]map[TaskStatus]ChangeType{
 		TaskStatusNotExist: ChangeDelete,
 	},
 	TaskStatusPaused: {
-		TaskStatusRunning:       ChangeResume,
-		TaskStatusExecptionStop: ChangeStop,
-		TaskStatusNotExist:      ChangeDelete,
+		TaskStatusRunning:  ChangeResume,
+		TaskStatusStop:     ChangeStop,
+		TaskStatusNotExist: ChangeDelete,
 	},
 }
 
