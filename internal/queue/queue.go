@@ -10,7 +10,7 @@ import (
 // TypedInterface warp a queue to supports advanced queue functions
 // such as concurrency control and Remove duplicates judgment
 type TypedInterface[T comparable] interface {
-	Add(item T)
+	Add(item T) (exist bool)
 	Len() int
 	Get() (item T, shutdown bool)
 	Done(item T)
@@ -192,11 +192,11 @@ type Typed[t comparable] struct {
 }
 
 // Add marks item as needing processing.
-func (q *Typed[T]) Add(item T) {
+func (q *Typed[T]) Add(item T) (exist bool) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
 	if q.shuttingDown {
-		return
+		return false
 	}
 	if q.dirty.has(item) {
 		// the same item is added again before it is processed, call the Touch
@@ -204,17 +204,18 @@ func (q *Typed[T]) Add(item T) {
 		if !q.processing.has(item) {
 			q.queue.Touch(item)
 		}
-		return
+		return true
 	}
 
 	if q.processing.has(item) {
-		return
+		return true
 	}
 	q.metrics.add(item)
 	q.dirty.insert(item)
 
 	q.queue.Push(item)
 	q.cond.Signal()
+	return false
 }
 
 // Len returns the current queue length, for informational purposes only. You

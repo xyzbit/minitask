@@ -49,6 +49,10 @@ func (e *Executor) getTask(taskKey string) *model.Task {
 func (e *Executor) setTask(taskKey string, task *model.Task) {
 	e.taskrw.Lock()
 	defer e.taskrw.Unlock()
+	if task.Status.IsFinalStatus() {
+		delete(e.tasks, taskKey)
+		return
+	}
 	e.tasks[taskKey] = task
 }
 

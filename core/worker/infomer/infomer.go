@@ -89,36 +89,41 @@ func (i *Infomer) Shutdown(ctx context.Context) error {
 }
 
 func (i *Infomer) enqueueIfTaskChange(ctx context.Context, workerID string, runInterval time.Duration) {
+	t := time.NewTicker(runInterval)
 	for {
-		// load want and real task status
-		wantTasks, err := i.recorder.ListRunnableTasks(ctx, workerID)
-		if err != nil {
-			i.logger.Error("[Infomer] load task failed: %v", err)
-			continue
-		}
-		realTasks := i.indexer.ListRealTasks()
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			// load want and real task status
+			wantTasks, err := i.recorder.ListRunnableTasks(context.Background(), workerID)
+			if err != nil {
+				i.logger.Error("[Infomer] load task failed: %v", err)
+				continue
+			}
+			realTasks := i.indexer.ListRealTasks()
 
-		// diff get changes
-		changes := diff(wantTasks, realTasks)
-		if len(changes) > 0 {
-			i.logger.Info("[Infomer] want tasks num(%d), real tasks num(%d), changes:%v", len(wantTasks), len(realTasks), changes)
-		}
+			// diff get changes
+			changes := diff(wantTasks, realTasks)
 
-		// enqueue
-		for _, change := range changes {
-			i.changeQueque.Add(change)
+			// enqueue
+			for _, change := range changes {
+				if exist := i.changeQueque.Add(change); !exist {
+					i.logger.Info("[Infomer] enqueue change: %v", change)
+				}
+			}
 		}
-
-		// wait for next
-		time.Sleep(runInterval)
 	}
 }
 
 func (i *Infomer) monitorChangeResult(ctx context.Context) {
 	i.indexer.SetAfterChange(func(t *model.Task) {
-		i.logger.Info("[Infomer] task %s status changed: %s", t.TaskKey, t.Status)
+		i.logger.Info("[Infomer] monitor task %s status changed: %s", t.TaskKey, t.Status)
 
 		if err := retry.Do(func() error {
+			if t.Status.IsFinalStatus() {
+				return i.recorder.FinishTaskTX(ctx, t)
+			}
 			return i.recorder.UpdateTask(ctx, t)
 		}); err != nil {
 			i.logger.Error("[Infomer] UpdateTask(%s) failed: %v", t.TaskKey, err)

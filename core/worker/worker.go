@@ -121,8 +121,6 @@ func (w *Worker) runChangeSyncer() {
 			break
 		}
 
-		log.Debug("[Worker] get change: %v", change)
-
 		exe, exist := executor.GetExecutor(change.TaskType)
 		if !exist {
 			log.Error("[Worker] executor type(%s) not found: %s", change.TaskType, change.TaskKey)

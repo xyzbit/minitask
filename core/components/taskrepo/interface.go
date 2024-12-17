@@ -22,7 +22,7 @@ type Interface interface {
 	// 获任务调度信息
 	ListTaskRuns(ctx context.Context) ([]*model.TaskRun, error)
 	// 更新任务状态并删除任务调度信息
-	FinishTaskTX(ctx context.Context, taskKey string, status model.TaskStatus, result string) error
+	FinishTaskTX(ctx context.Context, task *model.Task) error
 	// 获取可运行的任务
 	ListRunnableTasks(ctx context.Context, workerID string) ([]*model.Task, error)
 }

@@ -44,8 +44,7 @@ func NewExecutor(fn bizlogic) *Executor {
 
 func (e *Executor) Run(task *model.Task) error {
 	key := task.TaskKey
-	taskCtrl := e.getTaskCtrl(key)
-	if taskCtrl != nil {
+	if ctrl := e.getTaskCtrl(key); ctrl != nil {
 		return errors.New("task already running")
 	}
 
@@ -74,8 +73,9 @@ func (e *Executor) Run(task *model.Task) error {
 			e.run(key)
 		}()
 
+		ctrl := e.getTaskCtrl(key)
 		select {
-		case <-taskCtrl.exitCh:
+		case <-ctrl.exitCh:
 			err = fmt.Errorf("task %s force exit", key)
 			return
 		case <-finshCh:

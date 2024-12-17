@@ -77,6 +77,7 @@ func (s *HttpServer) ListTask(c *gin.Context) {
 
 func (s *HttpServer) OperateTask(c *gin.Context) {
 	var req struct {
+		BizID   string `json:"biz_id"`
 		TaskKey string `json:"task_key"`
 		Status  string `json:"status"`
 	}
@@ -96,7 +97,7 @@ func (s *HttpServer) OperateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status"})
 		return
 	}
-	if err := s.scheduler.OperateTask(c.Request.Context(), req.TaskKey, ts); err != nil {
+	if err := s.scheduler.OperateTask(c.Request.Context(), req.BizID, req.TaskKey, ts); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

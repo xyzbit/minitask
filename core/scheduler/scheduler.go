@@ -82,10 +82,29 @@ func (s *Scheduler) ListTask(ctx context.Context, filter *model.TaskFilter) ([]*
 	return tasks, nil
 }
 
-func (s *Scheduler) OperateTask(ctx context.Context, taskKey string, nextStatus model.TaskStatus) error {
-	task, err := s.taskRepo.GetTask(ctx, taskKey)
-	if err != nil {
-		return err
+func (s *Scheduler) OperateTask(ctx context.Context, bizID, taskKey string, nextStatus model.TaskStatus) error {
+	var task *model.Task
+
+	if taskKey != "" {
+		t, err := s.taskRepo.GetTask(ctx, taskKey)
+		if err != nil {
+			return err
+		}
+		task = t
+	} else if bizID != "" {
+		tasks, err := s.taskRepo.ListTask(ctx, &model.TaskFilter{
+			BizIDs: []string{bizID},
+			Limit:  1,
+		})
+		if err != nil {
+			return err
+		}
+		if len(tasks) == 0 {
+			return errors.New("task not found")
+		}
+		task = tasks[0]
+	} else {
+		return errors.New("invalid params, need bizID or taskKey")
 	}
 	// if err := task.Status.CanTransition(nextStatus); err != nil {
 	// 	return err
@@ -96,7 +115,7 @@ func (s *Scheduler) OperateTask(ctx context.Context, taskKey string, nextStatus 
 		return errors.Errorf("任务[%s]当前状态为 %s, 不允许进行 %s 操作", task.TaskKey, task.Status, nextStatus)
 	}
 
-	err = s.taskRepo.UpdateTaskTX(
+	err := s.taskRepo.UpdateTaskTX(
 		ctx,
 		&model.Task{
 			TaskKey: task.TaskKey,
