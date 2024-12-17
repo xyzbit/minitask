@@ -100,7 +100,9 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context, workerID string, runI
 
 		// diff get changes
 		changes := diff(wantTasks, realTasks)
-		i.logger.Info("[Infomer] 期望任务数(%d), 实际任务数(%d), 任务状态变化事件:%s", len(wantTasks), len(realTasks))
+		if len(changes) > 0 {
+			i.logger.Info("[Infomer] want tasks num(%d), real tasks num(%d), changes:%v", len(wantTasks), len(realTasks), changes)
+		}
 
 		// enqueue
 		for _, change := range changes {
