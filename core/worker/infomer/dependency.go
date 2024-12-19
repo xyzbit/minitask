@@ -14,7 +14,9 @@ type realTaskLoader interface {
 
 type recorder interface {
 	UpdateTask(ctx context.Context, task *model.Task) error
-	FinishTaskTX(ctx context.Context, task *model.Task) error
-	// 获取可运行的任务
-	ListRunnableTasks(ctx context.Context, workerID string) ([]*model.Task, error)
+	GetTask(ctx context.Context, key string) (*model.Task, error)
+	// returns all runnable tasks of the current worker.
+	ListRunnableTasks(ctx context.Context, workerID string) (keys []string, err error)
+	// watch all runnable tasks change.
+	WatchRunnableTasks(ctx context.Context, workerID string) (keys <-chan []string, err error)
 }

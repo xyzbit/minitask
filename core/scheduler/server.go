@@ -91,8 +91,7 @@ func (s *HttpServer) OperateTask(c *gin.Context) {
 		[]model.TaskStatus{
 			model.TaskStatusPaused,
 			model.TaskStatusRunning,
-			model.TaskStatusSuccess,
-			model.TaskStatusFailed,
+			model.TaskStatusStop,
 		}, ts) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status"})
 		return

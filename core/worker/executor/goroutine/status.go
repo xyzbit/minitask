@@ -4,7 +4,14 @@ import (
 	"github.com/xyzbit/minitaskx/core/model"
 )
 
-func (e *Executor) syncRunResult(taskKey string, err error) {
+func (e *Executor) syncRunResult(taskKey string) {
+	cloneTask := e.getTask(taskKey)
+	cloneTask.Status = model.TaskStatusRunning
+	e.resultChan <- cloneTask
+	e.setTask(taskKey, cloneTask)
+}
+
+func (e *Executor) syncRunFinshResult(taskKey string, err error) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusSuccess
 	if err != nil {
@@ -18,13 +25,6 @@ func (e *Executor) syncRunResult(taskKey string, err error) {
 func (e *Executor) syncPauseResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusPaused
-	e.resultChan <- cloneTask
-	e.setTask(taskKey, cloneTask)
-}
-
-func (e *Executor) syncResumeResult(taskKey string) {
-	cloneTask := e.getTask(taskKey)
-	cloneTask.Status = model.TaskStatusRunning
 	e.resultChan <- cloneTask
 	e.setTask(taskKey, cloneTask)
 }

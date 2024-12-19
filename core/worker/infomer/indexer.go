@@ -11,7 +11,7 @@ import (
 
 // Indexer will maintain cache of actual executor status
 type Indexer struct {
-	cache       *cache.ThreadSafeMap[model.TaskStatus]
+	cache       *cache.ThreadSafeMap[*model.Task]
 	loader      realTaskLoader
 	afterChange func(task *model.Task)
 	resync      time.Duration
@@ -21,13 +21,13 @@ func NewIndexer(
 	loader realTaskLoader,
 	resync time.Duration,
 ) *Indexer {
-	c := cache.NewThreadSafeMap[model.TaskStatus]()
+	c := cache.NewThreadSafeMap[*model.Task]()
 	reals, err := loader.List(context.Background())
 	if err != nil {
 		panic(err)
 	}
 	for _, r := range reals {
-		c.Set(r.TaskKey, r.Status)
+		c.Set(r.TaskKey, r)
 	}
 	return &Indexer{
 		cache:  c,
@@ -40,8 +40,9 @@ func (i *Indexer) SetAfterChange(f func(task *model.Task)) {
 	i.afterChange = f
 }
 
-func (i *Indexer) ListRealTasks() map[string]model.TaskStatus {
-	return i.cache.ListKVs()
+func (i *Indexer) GetRealTask(key string) *model.Task {
+	t, _ := i.cache.Get(key)
+	return t
 }
 
 // monitor real task status.
@@ -82,8 +83,8 @@ func (i *Indexer) refreshCache(ctx context.Context, ch chan *model.Task) {
 		return
 	}
 	for _, new := range newTasks {
-		oldStatus, exist := i.cache.Get(new.TaskKey)
-		if !exist || new.Status != oldStatus {
+		old, exist := i.cache.Get(new.TaskKey)
+		if !exist || new.Status != old.Status {
 			ch <- new
 		}
 	}
@@ -99,7 +100,7 @@ func (i *Indexer) processTask(c *model.Task) {
 	if c.Status.IsFinalStatus() {
 		i.cache.Delete(c.TaskKey)
 	} else {
-		i.cache.Set(c.TaskKey, c.Status)
+		i.cache.Set(c.TaskKey, c)
 	}
 
 	// 执行回调

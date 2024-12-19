@@ -10,6 +10,10 @@ import (
 // TypedInterface warp a queue to supports advanced queue functions
 // such as concurrency control and Remove duplicates judgment
 type TypedInterface[T comparable] interface {
+	// check if the item is in the queue
+	Exist(item T) bool
+	// repeated additions will be intercepted.
+	// If it has not been Get, the Queue.Touch method will be called. You can adjust the priority in turn.
 	Add(item T) (exist bool)
 	Len() int
 	Get() (item T, shutdown bool)
@@ -216,6 +220,13 @@ func (q *Typed[T]) Add(item T) (exist bool) {
 	q.queue.Push(item)
 	q.cond.Signal()
 	return false
+}
+
+// Exist checks if the item is in the queue.
+func (q *Typed[T]) Exist(item T) bool {
+	q.cond.L.Lock()
+	defer q.cond.L.Unlock()
+	return q.dirty.has(item) || q.processing.has(item)
 }
 
 // Len returns the current queue length, for informational purposes only. You

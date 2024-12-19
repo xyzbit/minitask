@@ -44,16 +44,6 @@ func (c *ThreadSafeMap[T]) List() []T {
 	return list
 }
 
-func (c *ThreadSafeMap[T]) ListKVs() map[string]T {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	kvs := make(map[string]T, len(c.items))
-	for k, v := range c.items {
-		kvs[k] = v
-	}
-	return kvs
-}
-
 func (c *ThreadSafeMap[T]) ListKeys() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

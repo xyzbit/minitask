@@ -56,7 +56,7 @@ func (e *Executor) Run(task *model.Task) error {
 		defer func() {
 			if err != nil {
 				log.Error("%v", err)
-				e.syncRunResult(key, err)
+				e.syncRunFinshResult(key, err)
 			}
 			e.delTaskCtrl(key)
 		}()
@@ -83,6 +83,7 @@ func (e *Executor) Run(task *model.Task) error {
 		}
 	}()
 
+	e.syncRunResult(key)
 	return nil
 }
 
@@ -160,17 +161,13 @@ func (e *Executor) run(taskKey string) {
 				return
 			case <-ctrl.resumeCh:
 				log.Debug("executor be resume in pause...")
-				e.syncResumeResult(taskKey)
+				e.syncRunResult(taskKey)
 			}
 		default:
 			cloneTask := e.getTask(taskKey)
 			finshed, err := e.fn(cloneTask)
-			if err != nil {
-				e.syncRunResult(taskKey, err)
-				return
-			}
-			if finshed {
-				e.syncRunResult(taskKey, nil)
+			if err != nil || finshed {
+				e.syncRunFinshResult(taskKey, err)
 				return
 			}
 		}
