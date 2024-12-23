@@ -21,28 +21,36 @@ func NewIndexer(
 	loader realTaskLoader,
 	resync time.Duration,
 ) *Indexer {
-	c := cache.NewThreadSafeMap[*model.Task]()
-	reals, err := loader.List(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	for _, r := range reals {
-		c.Set(r.TaskKey, r)
-	}
-	return &Indexer{
-		cache:  c,
+	i := &Indexer{
 		loader: loader,
 		resync: resync,
 	}
+
+	if err := i.initCache(); err != nil {
+		panic(err)
+	}
+	return i
 }
 
 func (i *Indexer) SetAfterChange(f func(task *model.Task)) {
 	i.afterChange = f
 }
 
-func (i *Indexer) GetRealTask(key string) *model.Task {
-	t, _ := i.cache.Get(key)
-	return t
+func (i *Indexer) ListTasks(keys []string) []*model.Task {
+	list := i.cache.List()
+	if len(keys) == 0 {
+		return list
+	}
+
+	ret := make([]*model.Task, 0, len(keys))
+	for _, item := range list {
+		for _, key := range keys {
+			if item.TaskKey == key {
+				ret = append(ret, item)
+			}
+		}
+	}
+	return ret
 }
 
 // monitor real task status.
@@ -76,6 +84,32 @@ func (i *Indexer) Monitor(ctx context.Context) {
 	}
 }
 
+func (i *Indexer) initCache() error {
+	recycleCondition := func(task *model.Task, afterSetDurtion time.Duration) bool {
+		if task == nil {
+			return true
+		}
+		b := task.Status.IsFinalStatus() && afterSetDurtion > time.Minute
+		if b {
+			log.Debug("[Infomer] recycle task: %s", task.TaskKey)
+		}
+		return b
+	}
+
+	c := cache.NewThreadSafeMap(recycleCondition)
+
+	reals, err := i.loader.List(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, r := range reals {
+		c.Set(r.TaskKey, r)
+	}
+
+	i.cache = c
+	return nil
+}
+
 func (i *Indexer) refreshCache(ctx context.Context, ch chan *model.Task) {
 	newTasks, err := i.loader.List(ctx)
 	if err != nil {
@@ -96,14 +130,8 @@ func (i *Indexer) processTask(c *model.Task) {
 		return
 	}
 
-	// 同步到本地缓存
-	if c.Status.IsFinalStatus() {
-		i.cache.Delete(c.TaskKey)
-	} else {
-		i.cache.Set(c.TaskKey, c)
-	}
+	i.cache.Set(c.TaskKey, c)
 
-	// 执行回调
 	if i.afterChange != nil {
 		i.afterChange(c)
 	}

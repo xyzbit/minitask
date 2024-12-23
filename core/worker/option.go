@@ -8,7 +8,8 @@ import (
 
 type options struct {
 	reportResourceInterval time.Duration
-	runInterval            time.Duration
+	// forced triggering of full task status comparison
+	resync time.Duration
 
 	shutdownTimeout time.Duration
 	logger          log.Logger
@@ -34,9 +35,9 @@ func WithReportResourceInterval(interval time.Duration) Option {
 	}
 }
 
-func WithRunInterval(interval time.Duration) Option {
+func WithTriggerResync(interval time.Duration) Option {
 	return func(o *options) {
-		o.runInterval = interval
+		o.resync = interval
 	}
 }
 
@@ -45,7 +46,7 @@ func newOptions(opts ...Option) *options {
 	o := options{
 		logger:                 log.Global(),
 		reportResourceInterval: 10 * time.Second,
-		runInterval:            1 * time.Second,
+		resync:                 15 * time.Second,
 		shutdownTimeout:        180 * time.Second,
 	}
 	for _, opt := range opts {

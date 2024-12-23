@@ -14,7 +14,8 @@ type realTaskLoader interface {
 
 type recorder interface {
 	UpdateTask(ctx context.Context, task *model.Task) error
-	GetTask(ctx context.Context, key string) (*model.Task, error)
+	FinishTask(ctx context.Context, task *model.Task) error
+	BatchGetWantTask(ctx context.Context, taskKeys []string) ([]*model.Task, error)
 	// returns all runnable tasks of the current worker.
 	ListRunnableTasks(ctx context.Context, workerID string) (keys []string, err error)
 	// watch all runnable tasks change.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 
 	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/model"
@@ -37,12 +38,12 @@ func New(
 	}
 }
 
-func (i *Infomer) Run(ctx context.Context, workerID string, runInterval time.Duration) error {
+func (i *Infomer) Run(ctx context.Context, workerID string, resync time.Duration) error {
 	swapped := i.running.CompareAndSwap(false, true)
 	if !swapped {
 		return errors.New("infomer already running")
 	}
-	trigger, err := i.monitorChangeTrigger(ctx, workerID, runInterval)
+	trigger, err := i.makeTigger(ctx, workerID, resync)
 	if err != nil {
 		return err
 	}
@@ -91,74 +92,30 @@ func (i *Infomer) Shutdown(ctx context.Context) error {
 	}
 }
 
-// monitor changes in desired status
-func (i *Infomer) monitorChangeTrigger(ctx context.Context, workerID string, runInterval time.Duration) (<-chan []string, error) {
-	keysCh := make(chan []string, 100)
-	ch, err := i.recorder.WatchRunnableTasks(ctx, workerID)
-	if err != nil {
-		return nil, err
-	}
-	go func() {
-		for keys := range ch {
-			keysCh <- keys
-		}
-	}()
-
-	go func() {
-		t := time.NewTicker(runInterval)
-		defer t.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				keys, err := i.recorder.ListRunnableTasks(context.Background(), workerID)
-				if err != nil {
-					i.logger.Error("[Infomer] monitorChangeWant ListRunnableTasks failed: %v", err)
-					continue
-				}
-				keysCh <- keys
-			}
-		}
-	}()
-
-	return keysCh, nil
-}
-
 // update recorder want + real cache need atomic.
-func (i *Infomer) enqueueIfTaskChange(ctx context.Context, keysCh <-chan []string) {
+func (i *Infomer) enqueueIfTaskChange(ctx context.Context, ch <-chan triggerInfo) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case keys, ok := <-keysCh:
+		case triggerInfo, ok := <-ch:
 			if !ok {
 				return
 			}
+			// load want and real task status
+			taskPairs, err := i.loadTaskPairsThreadSafe(ctx, triggerInfo)
+			if err != nil {
+				i.logger.Error("[Infomer] loadTaskPairs failed: %v", err)
+				continue
+			}
 
-			for _, key := range keys {
-				// check in queue.
-				if i.changeQueque.Exist(model.Change{TaskKey: key}) {
-					continue
-				}
+			// diff to get change
+			changes := diff(taskPairs)
 
-				// load want and real task status
-				wantTask, err := i.recorder.GetTask(context.Background(), key)
-				if err != nil {
-					i.logger.Error("[Infomer] load task failed: %v", err)
-					continue
-				}
-				realTask := i.indexer.GetRealTask(key)
-
-				// diff to get change
-				change := diff(wantTask, realTask)
-				if change == nil {
-					continue
-				}
-
-				// enqueue
-				if exist := i.changeQueque.Add(*change); !exist {
+			// enqueue.
+			// changeQueque can ensure that only one operation of a task is executed at the same time.
+			for _, change := range changes {
+				if exist := i.changeQueque.Add(change); !exist {
 					i.logger.Info("[Infomer] enqueue change: %v", change)
 				}
 			}
@@ -171,47 +128,121 @@ func (i *Infomer) monitorChangeResult(ctx context.Context) {
 		i.logger.Info("[Infomer] monitor task %s status changed: %s", t.TaskKey, t.Status)
 
 		if err := retry.Do(func() error {
+			if t.Status.IsFinalStatus() {
+				return i.recorder.FinishTask(context.Background(), t)
+			}
 			return i.recorder.UpdateTask(context.Background(), t)
 		}); err != nil {
 			i.logger.Error("[Infomer] UpdateTask(%s) failed: %v", t.TaskKey, err)
 		}
 
+		// mark change done, other operation of the task can enqueue.
 		i.changeQueque.Done(model.Change{TaskKey: t.TaskKey}) // only need task key to mask.
 	})
 	// monitor real task status
 	i.indexer.Monitor(ctx)
 }
 
-func diff(want *model.Task, real *model.Task) *model.Change {
-	if want == nil && real == nil {
-		return nil
+type taskPair struct {
+	want *model.Task
+	real *model.Task
+}
+
+func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo) ([]taskPair, error) {
+	// 1. check processing task, Ensure serial execution of the same task.
+	unprocessingKeys := make([]string, 0, len(info.taskKeys))
+	for _, key := range info.taskKeys {
+		if !i.changeQueque.Exist(model.Change{TaskKey: key}) {
+			unprocessingKeys = append(unprocessingKeys, key)
+		}
 	}
 
-	change := &model.Change{}
-	realStatus := model.TaskStatusNotExist
-	wantStatus := model.TaskStatusNotExist
-	if real != nil {
-		realStatus = real.Status
-		change.TaskKey = real.TaskKey
-		change.TaskType = real.Type
-		change.Task = real
-	}
-	if want != nil {
-		wantStatus = want.Status
-		change.TaskKey = want.TaskKey
-		change.TaskType = want.Type
-		change.Task = want
-	}
-
-	if realStatus == wantStatus {
-		return nil
-	}
-	changeType, err := model.GetChangeType(realStatus, wantStatus)
+	// 2. load want and real task.
+	taskPairs, err := i.loadTaskPairs(ctx, info)
 	if err != nil {
-		log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", want.TaskKey, realStatus, want.Status, err)
-		return nil
+		return nil, err
 	}
-	change.ChangeType = changeType
 
-	return change
+	// 3. filter finshed task.
+	// After the task is completed, the status is modified by the system, which will lead to some abnormal situations.
+	// This situation needs to be filtered. For details, please refer to github.com/xyzbit/minitaskx/docs/exception.md.
+	ret := make([]taskPair, 0, len(taskPairs))
+	for _, pair := range taskPairs {
+		if want := pair.want; want != nil {
+			if want.Status.IsAutoFinshed() {
+				continue
+			}
+		}
+		if real := pair.real; real != nil {
+			if real.Status.IsAutoFinshed() {
+				continue
+			}
+		}
+		ret = append(ret, pair)
+	}
+	return ret, nil
+}
+
+func (i *Infomer) loadTaskPairs(ctx context.Context, info triggerInfo) ([]taskPair, error) {
+	taskKeys := info.taskKeys
+	wantTasks, err := i.recorder.BatchGetWantTask(ctx, taskKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	var realTasks []*model.Task
+	if info.resync {
+		realTasks = i.indexer.ListTasks(nil)
+	} else {
+		realTasks = i.indexer.ListTasks(taskKeys)
+	}
+
+	realMap := lo.KeyBy(realTasks, func(t *model.Task) string { return t.TaskKey })
+	wantMap := lo.KeyBy(wantTasks, func(t *model.Task) string { return t.TaskKey })
+
+	taskPairs := make([]taskPair, 0, len(wantTasks))
+	for _, want := range wantTasks {
+		taskPairs = append(taskPairs, taskPair{want: want, real: realMap[want.TaskKey]})
+	}
+	for _, real := range realTasks {
+		_, exists := wantMap[real.TaskKey]
+		if !exists {
+			taskPairs = append(taskPairs, taskPair{real: real})
+		}
+	}
+
+	return taskPairs, nil
+}
+
+func diff(taskPairs []taskPair) []model.Change {
+	var changes []model.Change
+
+	for _, pair := range taskPairs {
+		want, real := pair.want, pair.real
+		wantStatus, realStatus := model.TaskStatusNotExist, model.TaskStatusNotExist
+		if real != nil {
+			realStatus = real.Status
+		}
+		if want != nil {
+			wantStatus = want.Status
+		}
+
+		if realStatus == wantStatus {
+			continue
+		}
+
+		changeType, err := model.GetChangeType(realStatus, wantStatus)
+		if err != nil {
+			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", want.TaskKey, realStatus, wantStatus, err)
+			continue
+		}
+		changes = append(changes, model.Change{
+			TaskKey:    want.TaskKey,
+			TaskType:   want.Type,
+			ChangeType: changeType,
+			Task:       want,
+		})
+	}
+
+	return changes
 }

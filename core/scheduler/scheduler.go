@@ -106,9 +106,9 @@ func (s *Scheduler) OperateTask(ctx context.Context, bizID, taskKey string, next
 	} else {
 		return errors.New("invalid params, need bizID or taskKey")
 	}
-	// if err := task.Status.CanTransition(nextStatus); err != nil {
-	// 	return err
-	// }
+	if err := task.Status.CanTransition(nextStatus); err != nil {
+		return err
+	}
 
 	waitStatus := nextStatus.PreWaitStatus()
 	if waitStatus == "" {

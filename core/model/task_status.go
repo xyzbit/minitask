@@ -27,6 +27,10 @@ func (ts TaskStatus) IsWaitStatus() bool {
 	return strings.HasPrefix(ts.String(), "wait_")
 }
 
+func (ts TaskStatus) IsAutoFinshed() bool {
+	return ts == TaskStatusSuccess || ts == TaskStatusFailed
+}
+
 func (ts TaskStatus) IsFinalStatus() bool {
 	return ts == TaskStatusSuccess || ts == TaskStatusFailed || ts == TaskStatusStop
 }

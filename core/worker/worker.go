@@ -7,7 +7,6 @@ import (
 
 	"github.com/xyzbit/minitaskx/core/components/discover"
 	"github.com/xyzbit/minitaskx/core/components/log"
-	"github.com/xyzbit/minitaskx/core/components/taskrepo"
 	"github.com/xyzbit/minitaskx/core/model"
 	"github.com/xyzbit/minitaskx/core/worker/executor"
 	"github.com/xyzbit/minitaskx/core/worker/infomer"
@@ -21,7 +20,6 @@ type Worker struct {
 	port int
 
 	discover discover.Interface
-	taskRepo taskrepo.Interface
 
 	infomer *infomer.Infomer
 
@@ -33,7 +31,6 @@ func NewWorker(
 	ip string,
 	port int,
 	discover discover.Interface,
-	taskRepo taskrepo.Interface,
 	infomer *infomer.Infomer,
 	opts ...Option,
 ) *Worker {
@@ -42,7 +39,6 @@ func NewWorker(
 		ip:       ip,
 		port:     port,
 		discover: discover,
-		taskRepo: taskRepo,
 		infomer:  infomer,
 		opts:     newOptions(opts...),
 	}
@@ -106,7 +102,7 @@ func (w *Worker) init() (clear func() error, err error) {
 }
 
 func (w *Worker) runInfomer(ctx context.Context) {
-	if err := w.infomer.Run(ctx, w.id, w.opts.runInterval); err != nil {
+	if err := w.infomer.Run(ctx, w.id, w.opts.resync); err != nil {
 		w.opts.logger.Error("[Worker] infomer run failed: %v", err)
 	}
 }
