@@ -18,11 +18,11 @@ func (w *Worker) generateInstanceMetadata() (map[string]string, error) {
 		metadata[k] = v
 	}
 
-	staint, err := model.GenerateStaint(ru, false)
+	stain, err := model.GenerateStain(ru, false)
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range staint {
+	for k, v := range stain {
 		metadata[k] = v
 	}
 

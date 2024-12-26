@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/xyzbit/minitaskx/core/components/log"
 	"github.com/xyzbit/minitaskx/core/model"
+	"github.com/xyzbit/minitaskx/core/worker/executor"
 )
 
 type taskCtrl struct {
@@ -19,8 +19,6 @@ type taskCtrl struct {
 }
 
 type Executor struct {
-	running atomic.Bool
-
 	rw    sync.RWMutex
 	ctrls map[string]*taskCtrl // task key <==> status 1: running 2: paused 3: stop
 
@@ -28,12 +26,12 @@ type Executor struct {
 	tasks  map[string]*model.Task
 
 	resultChan chan *model.Task // send external notifications when execution status changes
-	fn         bizlogic
+	fn         bizLogic
 }
 
-type bizlogic func(task *model.Task) (finshed bool, err error)
+type bizLogic func(task *model.Task) (finished bool, err error)
 
-func NewExecutor(fn bizlogic) *Executor {
+func NewExecutor(fn bizLogic) executor.Interface {
 	return &Executor{
 		ctrls:      make(map[string]*taskCtrl, 0),
 		tasks:      make(map[string]*model.Task, 0),
@@ -56,18 +54,18 @@ func (e *Executor) Run(task *model.Task) error {
 		defer func() {
 			if err != nil {
 				log.Error("%v", err)
-				e.syncRunFinshResult(key, err)
+				e.syncRunFinishResult(key, err)
 			}
 			e.delTaskCtrl(key)
 		}()
 
-		finshCh := make(chan struct{}, 1)
+		finishCh := make(chan struct{}, 1)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					err = fmt.Errorf("task %s panic: %v", key, r)
 				}
-				finshCh <- struct{}{}
+				finishCh <- struct{}{}
 			}()
 
 			e.run(key)
@@ -78,7 +76,7 @@ func (e *Executor) Run(task *model.Task) error {
 		case <-ctrl.exitCh:
 			err = fmt.Errorf("task %s force exit", key)
 			return
-		case <-finshCh:
+		case <-finishCh:
 			return
 		}
 	}()
@@ -140,7 +138,7 @@ func (e *Executor) List(ctx context.Context) ([]*model.Task, error) {
 	return e.listTasks(), nil
 }
 
-func (e *Executor) ResultChan() <-chan *model.Task {
+func (e *Executor) ChangeResult() <-chan *model.Task {
 	return e.resultChan
 }
 
@@ -154,6 +152,7 @@ func (e *Executor) run(taskKey string) {
 			return
 		case <-ctrl.pauseCh:
 			log.Debug("executor is paused...")
+			e.syncPauseResult(taskKey)
 			select {
 			case <-ctrl.stopCh:
 				log.Debug("executor be stop in pause...")
@@ -165,9 +164,9 @@ func (e *Executor) run(taskKey string) {
 			}
 		default:
 			cloneTask := e.getTask(taskKey)
-			finshed, err := e.fn(cloneTask)
-			if err != nil || finshed {
-				e.syncRunFinshResult(taskKey, err)
+			finished, err := e.fn(cloneTask)
+			if err != nil || finished {
+				e.syncRunFinishResult(taskKey, err)
 				return
 			}
 		}

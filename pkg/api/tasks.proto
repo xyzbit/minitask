@@ -61,7 +61,7 @@ message Task {
     string type = 5;
     string payload = 6;
     map<string, string> labels = 7;
-    map<string, string> staints = 8;
+    map<string, string> stains = 8;
     map<string, string> extra = 9;
     TaskStatus status = 10;
     string msg = 11;

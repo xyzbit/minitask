@@ -19,9 +19,9 @@ const (
 	GoGcCountKey   = "rs_go_gc_count"
 	GoGoroutineKey = "rs_go_goroutine"
 
-	staintPressureCPU = "staint_pressure_cpu"
-	staintPressureMem = "staint_pressure_mem"
-	staintDisable     = "staint_disable" // use for mark temporary offline
+	stainPressureCPU = "stain_pressure_cpu"
+	stainPressureMem = "stain_pressure_mem"
+	stainDisable     = "stain_disable" // use for mark temporary offline
 )
 
 func GenerateResourceUsage() (map[string]string, error) {
@@ -50,19 +50,19 @@ func GenerateResourceUsage() (map[string]string, error) {
 }
 
 // 生成污点标签
-func GenerateStaint(ru map[string]string, disable bool) (map[string]string, error) {
+func GenerateStain(ru map[string]string, disable bool) (map[string]string, error) {
 	u := ParseResourceUsage(ru)
-	staint := map[string]string{}
+	stain := map[string]string{}
 	if u[MemUsageKey] > 85 {
-		staint[staintPressureMem] = "high"
+		stain[stainPressureMem] = "high"
 	}
 	if u[MemUsageKey] > 85 {
-		staint[staintPressureCPU] = "high"
+		stain[stainPressureCPU] = "high"
 	}
 	if disable {
-		staint[staintDisable] = "true"
+		stain[stainDisable] = "true"
 	}
-	return staint, nil
+	return stain, nil
 }
 
 func ParseResourceUsage(metadata map[string]string) map[string]float64 {
@@ -77,10 +77,10 @@ func ParseResourceUsage(metadata map[string]string) map[string]float64 {
 	return result
 }
 
-func ParseStaint(metadata map[string]string) map[string]string {
+func Parsestain(metadata map[string]string) map[string]string {
 	result := make(map[string]string)
 	for key, value := range metadata {
-		if !strings.HasPrefix(key, "staint_") {
+		if !strings.HasPrefix(key, "stain_") {
 			continue
 		}
 		result[key] = value

@@ -73,7 +73,7 @@ func (i *Indexer) Monitor(ctx context.Context) {
 	}()
 	// watch task's changes of real status
 	go func() {
-		resultChan := i.loader.ResultChan()
+		resultChan := i.loader.ChangeResult()
 		for new := range resultChan {
 			ch <- new
 		}

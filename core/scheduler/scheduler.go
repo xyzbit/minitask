@@ -275,7 +275,7 @@ func (s *Scheduler) selectWorkerID(task *model.Task) (string, error) {
 	}
 
 	// filte 排除掉不部署的机器（污点、亲和性）
-	candidateWorkers := filteWorker(task, availableWorkers)
+	candidateWorkers := filterWorker(task, availableWorkers)
 	if len(candidateWorkers) == 0 {
 		return "", errors.New("没有可用的 worker")
 	}
@@ -363,22 +363,22 @@ func (s *Scheduler) updateWorkerInCache(updatedWorker discover.Instance) {
 	s.setAvailableWorkers(workers)
 }
 
-func filteWorker(task *model.Task, workers []discover.Instance) []discover.Instance {
+func filterWorker(task *model.Task, workers []discover.Instance) []discover.Instance {
 	candidateWorkers := make([]discover.Instance, 0, len(workers))
 
 	for _, worker := range workers {
-		nodeStaints := model.ParseStaint(worker.Metadata)
-		if len(nodeStaints) == 0 {
+		nodeStains := model.Parsestain(worker.Metadata)
+		if len(nodeStains) == 0 {
 			candidateWorkers = append(candidateWorkers, worker)
 			continue
 		}
-		if len(nodeStaints) > len(task.Staints) {
+		if len(nodeStains) > len(task.Stains) {
 			continue
 		}
 
 		matched := true
-		for k, nodev := range nodeStaints {
-			if task.Staints[k] != nodev {
+		for k, node := range nodeStains {
+			if task.Stains[k] != node {
 				matched = false
 				break
 			}

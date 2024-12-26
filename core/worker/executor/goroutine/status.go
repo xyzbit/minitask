@@ -7,33 +7,33 @@ import (
 func (e *Executor) syncRunResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusRunning
-	e.resultChan <- cloneTask
 	e.setTask(taskKey, cloneTask)
+	e.resultChan <- cloneTask
 }
 
-func (e *Executor) syncRunFinshResult(taskKey string, err error) {
+func (e *Executor) syncRunFinishResult(taskKey string, err error) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusSuccess
 	if err != nil {
 		cloneTask.Status = model.TaskStatusFailed
 		cloneTask.Msg = err.Error()
 	}
-	e.resultChan <- cloneTask
 	e.setTask(taskKey, cloneTask)
+	e.resultChan <- cloneTask
 }
 
 func (e *Executor) syncPauseResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusPaused
-	e.resultChan <- cloneTask
 	e.setTask(taskKey, cloneTask)
+	e.resultChan <- cloneTask
 }
 
 func (e *Executor) syncStopResult(taskKey string) {
 	cloneTask := e.getTask(taskKey)
 	cloneTask.Status = model.TaskStatusStop
-	e.resultChan <- cloneTask
 	e.setTask(taskKey, cloneTask)
+	e.resultChan <- cloneTask
 }
 
 func (e *Executor) getTask(taskKey string) *model.Task {

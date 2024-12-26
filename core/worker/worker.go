@@ -7,6 +7,7 @@ import (
 
 	"github.com/xyzbit/minitaskx/core/components/discover"
 	"github.com/xyzbit/minitaskx/core/components/log"
+	"github.com/xyzbit/minitaskx/core/components/taskrepo"
 	"github.com/xyzbit/minitaskx/core/model"
 	"github.com/xyzbit/minitaskx/core/worker/executor"
 	"github.com/xyzbit/minitaskx/core/worker/infomer"
@@ -21,7 +22,8 @@ type Worker struct {
 
 	discover discover.Interface
 
-	infomer *infomer.Infomer
+	infomer    *infomer.Infomer
+	exeManager *executor.Manager
 
 	opts *options
 }
@@ -31,17 +33,25 @@ func NewWorker(
 	ip string,
 	port int,
 	discover discover.Interface,
-	infomer *infomer.Infomer,
+	taskRepo taskrepo.Interface,
 	opts ...Option,
 ) *Worker {
-	return &Worker{
+	w := &Worker{
 		id:       id,
 		ip:       ip,
 		port:     port,
 		discover: discover,
-		infomer:  infomer,
 		opts:     newOptions(opts...),
 	}
+
+	manager := &executor.Manager{}
+	w.infomer = infomer.New(
+		infomer.NewIndexer(manager, w.opts.resync),
+		taskRepo,
+		w.opts.logger,
+	)
+	w.exeManager = manager
+	return w
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -117,25 +127,8 @@ func (w *Worker) runChangeSyncer() {
 			break
 		}
 
-		exe, exist := executor.GetExecutor(change.TaskType)
-		if !exist {
-			log.Error("[Worker] executor type(%s) not found: %s", change.TaskType, change.TaskKey)
-			consumer.JumpChange(change)
-		}
-
-		switch change.ChangeType {
-		case model.ChangeCreate:
-			exe.Run(change.Task)
-		case model.ChangeDelete:
-			exe.Exit(change.TaskKey)
-		case model.ChangePause:
-			exe.Pause(change.TaskKey)
-		case model.ChangeResume:
-			exe.Resume(change.TaskKey)
-		case model.ChangeStop:
-			exe.Stop(change.TaskKey)
-		default:
-			log.Error("unknown change type: %s", change.ChangeType)
+		if err := w.exeManager.ChangeHandle(&change); err != nil {
+			log.Error("[Worker] change sync failed: %v", err)
 			consumer.JumpChange(change)
 		}
 	}
@@ -143,14 +136,14 @@ func (w *Worker) runChangeSyncer() {
 
 func (w *Worker) gracefulShutdown() error {
 	// mark instance disable, worker will no longer be assigned tasks in the future.
-	staint, _ := model.GenerateStaint(map[string]string{}, true)
+	stain, _ := model.GenerateStain(map[string]string{}, true)
 	err := retry.Do(func() error {
 		return w.discover.UpdateInstance(discover.Instance{
 			Ip:       w.ip,
 			Port:     uint64(w.port),
 			Enable:   false,
 			Healthy:  true,
-			Metadata: staint,
+			Metadata: stain,
 		})
 	})
 	if err != nil {

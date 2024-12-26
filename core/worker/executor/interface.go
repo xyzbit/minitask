@@ -21,5 +21,5 @@ type Interface interface {
 	Exit(taskKey string) error
 
 	List(ctx context.Context) ([]*model.Task, error)
-	ResultChan() <-chan *model.Task
+	ChangeResult() <-chan *model.Task
 }

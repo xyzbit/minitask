@@ -10,7 +10,7 @@ type Task struct {
 	Type      string
 	Payload   string
 	Labels    map[string]string
-	Staints   map[string]string
+	Stains    map[string]string
 	Extra     map[string]string
 	Status    TaskStatus
 	Msg       string
@@ -27,7 +27,7 @@ func (t *Task) Clone() *Task {
 		Type:      t.Type,
 		Payload:   t.Payload,
 		Labels:    t.Labels,
-		Staints:   t.Staints,
+		Stains:    t.Stains,
 		Extra:     t.Extra,
 		Status:    t.Status,
 		Msg:       t.Msg,
