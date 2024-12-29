@@ -95,11 +95,11 @@ func (i *Indexer) Monitor(ctx context.Context) {
 }
 
 func (i *Indexer) initCache() error {
-	recycleCondition := func(task *model.Task, afterSetDurtion time.Duration) bool {
+	recycleCondition := func(task *model.Task, afterSetDuration time.Duration) bool {
 		if task == nil {
 			return true
 		}
-		b := task.Status.IsFinalStatus() && afterSetDurtion > time.Minute
+		b := task.Status.IsFinalStatus() && afterSetDuration > time.Minute
 		if b {
 			log.Debug("[Infomer] recycle task: %s", task.TaskKey)
 		}

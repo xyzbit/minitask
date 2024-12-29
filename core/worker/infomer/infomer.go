@@ -108,6 +108,9 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context, ch <-chan triggerInfo
 				i.logger.Error("[Infomer] loadTaskPairs failed: %v", err)
 				continue
 			}
+			if len(taskPairs) == 0 {
+				continue
+			}
 
 			// diff to get change
 			changes := diff(taskPairs)
@@ -181,11 +184,15 @@ func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo)
 	taskPairs, err := i.loadTaskPairs(ctx, wantTaskKeys, realTaskKeys)
 	if err != nil {
 		return nil, err
+	} // TODo 处理 stop 情况
+	if len(taskPairs) == 0 {
+		return nil, nil
 	}
 
 	// 3. filter finished task.
-	// After the task is completed, the status is modified by the system, which will lead to some abnormal situations.
-	// This situation needs to be filtered. For details, please refer to github.com/xyzbit/minitaskx/docs/exception.md.
+	// After the task is completed, the system will automatically modify the task state.
+	// This action occurs in parallel with 'diff' logic.
+	// So we filter out tasks that are completed.
 	ret := make([]taskPair, 0, len(taskPairs))
 	for _, pair := range taskPairs {
 		if want := pair.want; want != nil {
@@ -204,11 +211,18 @@ func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo)
 }
 
 func (i *Infomer) loadTaskPairs(ctx context.Context, wantTaskKeys, realTaskKeys []string) ([]taskPair, error) {
-	wantTasks, err := i.recorder.BatchGetWantTask(ctx, wantTaskKeys)
+	if len(wantTaskKeys) == 0 && len(realTaskKeys) == 0 {
+		return nil, nil
+	}
+
+	wantTasks, err := i.recorder.BatchGetWantTask(ctx, wantTaskKeys) //2.是不是延迟删除导致的，如果是要在diff判断状态
 	if err != nil {
 		return nil, err
 	}
 	realTasks := i.indexer.ListTasks(realTaskKeys)
+	if len(wantTasks) == 0 && len(realTasks) == 0 {
+		return nil, nil
+	}
 
 	realMap := lo.KeyBy(realTasks, func(t *model.Task) string { return t.TaskKey })
 	wantMap := lo.KeyBy(wantTasks, func(t *model.Task) string { return t.TaskKey })
@@ -249,7 +263,7 @@ func diff(taskPairs []taskPair) []model.Change {
 
 		changeType, err := model.GetChangeType(realStatus, wantStatus)
 		if err != nil {
-			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", want.TaskKey, realStatus, wantStatus, err)
+			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", changeTask.TaskKey, realStatus, wantStatus, err)
 			continue
 		}
 		changes = append(changes, model.Change{
@@ -271,14 +285,23 @@ func (i *Infomer) handleException(cs []model.Change) []model.Change {
 			continue
 		}
 
-		if c.ChangeType == model.ChangeExceptionFinish {
-			if err := i.recorder.FinishTask(context.Background(), &model.Task{
+		var err error
+		switch c.ChangeType {
+		case model.ChangeExceptionFinish:
+			err = i.recorder.FinishTask(context.Background(), &model.Task{
 				TaskKey: c.TaskKey,
 				Status:  model.TaskStatusStop,
 				Msg:     "exception finish",
-			}); err != nil {
-				log.Error("[Infomer] FinishTask(%s) when handleException: %v", c.TaskKey, err)
-			}
+			})
+		case model.ChangeExceptionUpdate:
+			err = i.recorder.UpdateTask(context.Background(), &model.Task{
+				TaskKey: c.TaskKey,
+				Status:  model.TaskStatusPaused,
+				Msg:     "exception update",
+			})
+		}
+		if err != nil {
+			log.Error("[Infomer] handleException task(%s), err: %v", c.TaskKey, err)
 		}
 	}
 	return normalChanges

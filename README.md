@@ -14,25 +14,7 @@ git clone git@github.com:xyzbit/minitaskx-example.git
 cd ./minitaskx-example
 ```
 
-2. 启动依赖(需要提前安装 docker)
-```Shell
-make init
-```
-
-3. 启动 minitaskx worker
-```Shell
-port=9090 make worker
-```
-
-4. 启动 minitaskx scheduler
-```Shell
-port=8080 make scheduler
-```
-
-5. 测试任务操作
-```Shell
- make test_create
-```
+2. 参考 minitaskx-example README.md 进行启动并实验.
 
 ## 文档
 [系统架构](./docs/architecture.md)

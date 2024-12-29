@@ -18,14 +18,14 @@ const (
 	ChangePause  ChangeType = "pause"
 	ChangeStop   ChangeType = "stop"
 
-	ChangeExceptionIgnore ChangeType = "exception_ignore"
+	ChangeExceptionUpdate ChangeType = "exception_update"
 	ChangeExceptionFinish ChangeType = "exception_finish"
 )
 
 var changeTypesRule = map[TaskStatus]map[TaskStatus]ChangeType{
 	TaskStatusNotExist: {
 		TaskStatusRunning: ChangeCreate,
-		TaskStatusPaused:  ChangeExceptionIgnore,
+		TaskStatusPaused:  ChangeExceptionUpdate,
 		TaskStatusStop:    ChangeExceptionFinish,
 	},
 	TaskStatusRunning: {
