@@ -53,6 +53,16 @@ func (i *Indexer) ListTasks(keys []string) []*model.Task {
 	return ret
 }
 
+func (i *Indexer) ListTaskKeys() []string {
+	list := i.cache.List()
+
+	ret := make([]string, 0, len(list))
+	for _, item := range list {
+		ret = append(ret, item.TaskKey)
+	}
+	return ret
+}
+
 // monitor real task status.
 func (i *Indexer) Monitor(ctx context.Context) {
 	ch := make(chan *model.Task, 100)
@@ -135,5 +145,4 @@ func (i *Indexer) processTask(c *model.Task) {
 	if i.afterChange != nil {
 		i.afterChange(c)
 	}
-	return
 }

@@ -1,6 +1,8 @@
 package model
 
 import (
+	"strings"
+
 	"github.com/pkg/errors"
 	"github.com/xyzbit/minitaskx/internal/queue"
 )
@@ -15,11 +17,16 @@ const (
 	ChangeResume ChangeType = "resume"
 	ChangePause  ChangeType = "pause"
 	ChangeStop   ChangeType = "stop"
+
+	ChangeExceptionIgnore ChangeType = "exception_ignore"
+	ChangeExceptionFinish ChangeType = "exception_finish"
 )
 
 var changeTypesRule = map[TaskStatus]map[TaskStatus]ChangeType{
 	TaskStatusNotExist: {
 		TaskStatusRunning: ChangeCreate,
+		TaskStatusPaused:  ChangeExceptionIgnore,
+		TaskStatusStop:    ChangeExceptionFinish,
 	},
 	TaskStatusRunning: {
 		TaskStatusPaused:   ChangePause,
@@ -57,4 +64,8 @@ type Change struct {
 
 func (c Change) GetUniKey() Change {
 	return Change{TaskKey: c.TaskKey}
+}
+
+func (c Change) IsException() bool {
+	return strings.HasPrefix(string(c.ChangeType), "exception")
 }

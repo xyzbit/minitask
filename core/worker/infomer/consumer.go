@@ -16,9 +16,9 @@ type changeConsumer struct {
 }
 
 func (cc *changeConsumer) WaitChange() (item model.Change, shutdown bool) {
-	return cc.i.changeQueque.Get()
+	return cc.i.changeQueue.Get()
 }
 
 func (cc *changeConsumer) JumpChange(item model.Change) {
-	cc.i.changeQueque.Done(item)
+	cc.i.changeQueue.Done(item)
 }
