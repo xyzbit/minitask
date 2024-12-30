@@ -16,6 +16,7 @@ type taskCtrl struct {
 	pauseCh  chan struct{}
 	resumeCh chan struct{}
 	exitCh   chan struct{}
+	fn       BizLogic
 }
 
 type Executor struct {
@@ -25,18 +26,18 @@ type Executor struct {
 	taskrw sync.RWMutex
 	tasks  map[string]*model.Task
 
-	resultChan chan *model.Task // send external notifications when execution status changes
-	fn         bizLogic
+	resultChan  chan *model.Task // send external notifications when execution status changes
+	bizLogicNew func() BizLogic
 }
 
-type bizLogic func(task *model.Task) (finished bool, err error)
+type BizLogic func(task *model.Task) (finished bool, err error)
 
-func NewExecutor(fn bizLogic) executor.Interface {
+func NewExecutor(new func() BizLogic) executor.Interface {
 	return &Executor{
-		ctrls:      make(map[string]*taskCtrl, 0),
-		tasks:      make(map[string]*model.Task, 0),
-		resultChan: make(chan *model.Task, 10),
-		fn:         fn,
+		ctrls:       make(map[string]*taskCtrl, 0),
+		tasks:       make(map[string]*model.Task, 0),
+		resultChan:  make(chan *model.Task, 10),
+		bizLogicNew: new,
 	}
 }
 
@@ -164,7 +165,7 @@ func (e *Executor) run(taskKey string) {
 			}
 		default:
 			cloneTask := e.getTask(taskKey)
-			finished, err := e.fn(cloneTask)
+			finished, err := ctrl.fn(cloneTask)
 			if err != nil || finished {
 				e.syncRunFinishResult(taskKey, err)
 				return
@@ -181,6 +182,7 @@ func (e *Executor) initTaskCtrl(taskKey string) {
 		pauseCh:  make(chan struct{}, 1),
 		resumeCh: make(chan struct{}, 1),
 		exitCh:   make(chan struct{}, 1),
+		fn:       e.bizLogicNew(),
 	}
 }
 

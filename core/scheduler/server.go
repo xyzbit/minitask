@@ -3,6 +3,7 @@ package scheduler
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -31,11 +32,13 @@ func (s *HttpServer) CreateTask(c *gin.Context) {
 		return
 	}
 
+	now := time.Now()
 	if err := s.scheduler.CreateTask(c.Request.Context(), &model.Task{
-		BizID:   req.BizID,
-		BizType: req.BizType,
-		Type:    req.Type,
-		Payload: req.Payload,
+		BizID:     req.BizID,
+		BizType:   req.BizType,
+		Type:      req.Type,
+		Payload:   req.Payload,
+		NextRunAt: &now,
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

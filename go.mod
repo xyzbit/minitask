@@ -3,6 +3,7 @@ module github.com/xyzbit/minitaskx
 go 1.23.0
 
 godebug default=go1.23
+godebug gctrace=1
 
 require (
 	github.com/gin-gonic/gin v1.10.0

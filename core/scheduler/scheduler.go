@@ -115,14 +115,10 @@ func (s *Scheduler) OperateTask(ctx context.Context, bizID, taskKey string, next
 		return errors.Errorf("任务[%s]当前状态为 %s, 不允许进行 %s 操作", task.TaskKey, task.Status, nextStatus)
 	}
 
-	err := s.taskRepo.UpdateTaskTX(
-		ctx,
-		&model.Task{
-			TaskKey: task.TaskKey,
-			Status:  waitStatus,
-		},
-		&model.TaskRun{
-			TaskKey:       taskKey,
+	err := s.taskRepo.UpdateTask(
+		ctx, &model.Task{
+			TaskKey:       task.TaskKey,
+			Status:        waitStatus,
 			WantRunStatus: nextStatus,
 		},
 	)
@@ -135,9 +131,8 @@ func (s *Scheduler) OperateTask(ctx context.Context, bizID, taskKey string, next
 func (s *Scheduler) createTask(ctx context.Context, task *model.Task) error {
 	task.TaskKey = uuid.New().String()
 	task.Status = model.TaskStatusWaitScheduling
-	taskRun := &model.TaskRun{TaskKey: task.TaskKey}
 
-	err := s.taskRepo.CreateTaskTX(ctx, task, taskRun)
+	err := s.taskRepo.CreateTask(ctx, task)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -157,14 +152,10 @@ func (s *Scheduler) assignTask(ctx context.Context, task *model.Task) error {
 
 	nextStatus := model.TaskStatusRunning
 	now := time.Now()
-	err = s.taskRepo.UpdateTaskTX(
-		ctx,
-		&model.Task{
-			TaskKey: task.TaskKey,
-			Status:  nextStatus.PreWaitStatus(),
-		},
-		&model.TaskRun{
+	err = s.taskRepo.UpdateTask(
+		ctx, &model.Task{
 			TaskKey:       task.TaskKey,
+			Status:        nextStatus.PreWaitStatus(),
 			NextRunAt:     &now,
 			WorkerID:      workerID,
 			WantRunStatus: nextStatus,
@@ -205,26 +196,26 @@ func (s *Scheduler) monitorAssignEvent() {
 
 func (s *Scheduler) loadNeedAssignTasks(ctx context.Context) ([]*model.Task, error) {
 	newAvailableWorkers := s.getAvailableWorkers()
-	taskRuns, err := s.taskRepo.ListTaskRuns(ctx)
+	allRunnableTaskKeys, err := s.taskRepo.ListRunnableTasks(ctx, "")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	tasks, err := s.taskRepo.BatchGetTask(ctx, allRunnableTaskKeys)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	taskKeys := make([]string, 0, len(taskRuns))
-	for _, run := range taskRuns {
+	ret := make([]*model.Task, 0, len(tasks))
+	for _, run := range tasks {
 		found := slices.ContainsFunc(newAvailableWorkers, func(newWorker discover.Instance) bool {
 			return newWorker.ID() == run.WorkerID
 		})
 		if !found {
-			taskKeys = append(taskKeys, run.TaskKey)
+			ret = append(ret, run)
 		}
 	}
 
-	tasks, err := s.taskRepo.BatchGetTask(ctx, taskKeys)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return tasks, nil
+	return ret, nil
 }
 
 func (s *Scheduler) amILeader() (bool, *election.LeaderElection, error) {

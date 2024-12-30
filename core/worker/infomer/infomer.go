@@ -2,6 +2,7 @@ package infomer
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,9 +134,6 @@ func (i *Infomer) monitorChangeResult(ctx context.Context) {
 		i.logger.Info("[Infomer] monitor task %s status changed: %s", t.TaskKey, t.Status)
 
 		if err := retry.Do(func() error {
-			if t.Status.IsFinalStatus() {
-				return i.recorder.FinishTask(context.Background(), t)
-			}
 			return i.recorder.UpdateTask(context.Background(), t)
 		}); err != nil {
 			i.logger.Error("[Infomer] UpdateTask(%s) failed: %v", t.TaskKey, err)
@@ -184,7 +182,7 @@ func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo)
 	taskPairs, err := i.loadTaskPairs(ctx, wantTaskKeys, realTaskKeys)
 	if err != nil {
 		return nil, err
-	} // TODo 处理 stop 情况
+	}
 	if len(taskPairs) == 0 {
 		return nil, nil
 	}
@@ -196,12 +194,12 @@ func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo)
 	ret := make([]taskPair, 0, len(taskPairs))
 	for _, pair := range taskPairs {
 		if want := pair.want; want != nil {
-			if want.Status.IsAutoFinished() {
+			if want.Status.IsFinalStatus() {
 				continue
 			}
 		}
 		if real := pair.real; real != nil {
-			if real.Status.IsAutoFinished() {
+			if real.Status.IsFinalStatus() {
 				continue
 			}
 		}
@@ -215,7 +213,7 @@ func (i *Infomer) loadTaskPairs(ctx context.Context, wantTaskKeys, realTaskKeys 
 		return nil, nil
 	}
 
-	wantTasks, err := i.recorder.BatchGetWantTask(ctx, wantTaskKeys) //2.是不是延迟删除导致的，如果是要在diff判断状态
+	wantTasks, err := i.recorder.BatchGetTask(ctx, wantTaskKeys) // 2.是不是延迟删除导致的，如果是要在diff判断状态
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +252,7 @@ func diff(taskPairs []taskPair) []model.Change {
 		}
 		if want != nil {
 			changeTask = want
-			wantStatus = want.Status
+			wantStatus = want.WantRunStatus
 		}
 
 		if realStatus == wantStatus {
@@ -285,22 +283,11 @@ func (i *Infomer) handleException(cs []model.Change) []model.Change {
 			continue
 		}
 
-		var err error
-		switch c.ChangeType {
-		case model.ChangeExceptionFinish:
-			err = i.recorder.FinishTask(context.Background(), &model.Task{
-				TaskKey: c.TaskKey,
-				Status:  model.TaskStatusStop,
-				Msg:     "exception finish",
-			})
-		case model.ChangeExceptionUpdate:
-			err = i.recorder.UpdateTask(context.Background(), &model.Task{
-				TaskKey: c.TaskKey,
-				Status:  model.TaskStatusPaused,
-				Msg:     "exception update",
-			})
-		}
-		if err != nil {
+		if err := i.recorder.UpdateTask(context.Background(), &model.Task{
+			TaskKey: c.TaskKey,
+			Status:  model.TaskStatusPaused,
+			Msg:     fmt.Sprintf("exception:%s", c.ChangeType),
+		}); err != nil {
 			log.Error("[Infomer] handleException task(%s), err: %v", c.TaskKey, err)
 		}
 	}

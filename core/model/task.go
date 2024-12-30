@@ -3,19 +3,22 @@ package model
 import "time"
 
 type Task struct {
-	ID        int64
-	TaskKey   string
-	BizID     string
-	BizType   string
-	Type      string
-	Payload   string
-	Labels    map[string]string
-	Stains    map[string]string
-	Extra     map[string]string
-	Status    TaskStatus
-	Msg       string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID            int64
+	TaskKey       string
+	BizID         string
+	BizType       string
+	Type          string
+	Payload       string
+	Labels        map[string]string
+	Stains        map[string]string
+	Extra         map[string]string
+	Status        TaskStatus // current real status
+	WantRunStatus TaskStatus // want status
+	WorkerID      string
+	NextRunAt     *time.Time
+	Msg           string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (t *Task) Clone() *Task {
@@ -34,16 +37,6 @@ func (t *Task) Clone() *Task {
 		CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt,
 	}
-}
-
-type TaskRun struct {
-	ID            int64
-	TaskKey       string
-	WorkerID      string
-	NextRunAt     *time.Time
-	WantRunStatus TaskStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
 }
 
 type TaskFilter struct {
