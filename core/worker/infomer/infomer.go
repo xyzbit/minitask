@@ -254,6 +254,7 @@ func diff(taskPairs []taskPair) []model.Change {
 			changeTask = want
 			wantStatus = want.WantRunStatus
 		}
+		log.Debug("[Infomer] diff, want status: %v, real: %v", want.Status, real.Status)
 
 		if realStatus == wantStatus {
 			continue

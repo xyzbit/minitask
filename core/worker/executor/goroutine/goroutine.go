@@ -75,7 +75,7 @@ func (e *Executor) Run(task *model.Task) error {
 		ctrl := e.getTaskCtrl(key)
 		select {
 		case <-ctrl.exitCh:
-			err = fmt.Errorf("task %s force exit", key)
+			err = errors.New("force exit")
 			return
 		case <-finishCh:
 			return

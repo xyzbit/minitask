@@ -3,22 +3,22 @@ package model
 import "time"
 
 type Task struct {
-	ID            int64
-	TaskKey       string
-	BizID         string
-	BizType       string
-	Type          string
-	Payload       string
-	Labels        map[string]string
-	Stains        map[string]string
-	Extra         map[string]string
-	Status        TaskStatus // current real status
-	WantRunStatus TaskStatus // want status
-	WorkerID      string
-	NextRunAt     *time.Time
-	Msg           string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            int64             `json:"id,omitempty"`
+	TaskKey       string            `json:"task_key,omitempty"`
+	BizID         string            `json:"biz_id,omitempty"`
+	BizType       string            `json:"biz_type,omitempty"`
+	Type          string            `json:"type,omitempty"`
+	Payload       string            `json:"payload,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	Stains        map[string]string `json:"stains,omitempty"`
+	Extra         map[string]string `json:"extra,omitempty"`
+	Status        TaskStatus        `json:"status,omitempty"`          // current real status
+	WantRunStatus TaskStatus        `json:"want_run_status,omitempty"` // want status
+	WorkerID      string            `json:"worker_id,omitempty"`
+	NextRunAt     *time.Time        `json:"next_run_at,omitempty"`
+	Msg           string            `json:"msg,omitempty"`
+	CreatedAt     time.Time         `json:"created_at,omitempty"`
+	UpdatedAt     time.Time         `json:"updated_at,omitempty"`
 }
 
 func (t *Task) Clone() *Task {
