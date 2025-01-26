@@ -131,7 +131,7 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context, ch <-chan triggerInfo
 
 func (i *Infomer) monitorChangeResult(ctx context.Context) {
 	i.indexer.SetAfterChange(func(t *model.Task) {
-		i.logger.Info("[Infomer] monitor task %s status changed: %s", t.TaskKey, t.Status)
+		i.logger.Info("[Infomer] monitor task %s want:%s status changed: %s", t.TaskKey, t.WantRunStatus, t.Status)
 
 		if err := retry.Do(func() error {
 			return i.recorder.UpdateTask(context.Background(), t)
@@ -254,7 +254,7 @@ func diff(taskPairs []taskPair) []model.Change {
 			changeTask = want
 			wantStatus = want.WantRunStatus
 		}
-		log.Debug("[Infomer] diff, want status: %v, real: %v", want.Status, real.Status)
+		log.Debug("[Infomer] diff, want status: %v, real: %v", wantStatus, realStatus)
 
 		if realStatus == wantStatus {
 			continue
