@@ -5,63 +5,61 @@ import (
 )
 
 func (e *Executor) syncRunResult(taskKey string) {
-	cloneTask := e.getTask(taskKey)
-	cloneTask.Status = model.TaskStatusRunning
-	e.setTask(taskKey, cloneTask)
-	e.resultChan <- cloneTask
+	e.setTaskStatus(taskKey, model.TaskStatusRunning)
+	e.resultChan <- &model.TaskExecResult{
+		TaskKey: taskKey,
+		Status:  model.TaskStatusRunning,
+	}
 }
 
 func (e *Executor) syncRunFinishResult(taskKey string, err error) {
-	cloneTask := e.getTask(taskKey)
-	cloneTask.Status = model.TaskStatusSuccess
-	if err != nil {
-		cloneTask.Status = model.TaskStatusFailed
-		cloneTask.Msg = err.Error()
+	result := &model.TaskExecResult{
+		TaskKey: taskKey,
+		Status:  model.TaskStatusSuccess,
 	}
-	e.setTask(taskKey, cloneTask)
-	e.resultChan <- cloneTask
+	if err != nil {
+		result.Status = model.TaskStatusFailed
+		result.Msg = err.Error()
+	}
+	e.setTaskStatus(taskKey, result.Status)
+	e.resultChan <- result
 }
 
 func (e *Executor) syncPauseResult(taskKey string) {
-	cloneTask := e.getTask(taskKey)
-	cloneTask.Status = model.TaskStatusPaused
-	e.setTask(taskKey, cloneTask)
-	e.resultChan <- cloneTask
+	e.setTaskStatus(taskKey, model.TaskStatusPaused)
+	e.resultChan <- &model.TaskExecResult{
+		TaskKey: taskKey,
+		Status:  model.TaskStatusPaused,
+	}
 }
 
 func (e *Executor) syncStopResult(taskKey string) {
-	cloneTask := e.getTask(taskKey)
-	cloneTask.Status = model.TaskStatusStop
-	e.setTask(taskKey, cloneTask)
-	e.resultChan <- cloneTask
-}
-
-func (e *Executor) getTask(taskKey string) *model.Task {
-	e.taskrw.RLock()
-	defer e.taskrw.RUnlock()
-	t, ok := e.tasks[taskKey]
-	if !ok {
-		return nil
+	e.setTaskStatus(taskKey, model.TaskStatusStop)
+	e.resultChan <- &model.TaskExecResult{
+		TaskKey: taskKey,
+		Status:  model.TaskStatusStop,
 	}
-	return t.Clone()
 }
 
-func (e *Executor) setTask(taskKey string, task *model.Task) {
+func (e *Executor) setTaskStatus(taskKey string, status model.TaskStatus) {
 	e.taskrw.Lock()
 	defer e.taskrw.Unlock()
-	if task.Status.IsFinalStatus() {
-		delete(e.tasks, taskKey)
+	if status.IsFinalStatus() {
+		delete(e.taskStatus, taskKey)
 		return
 	}
-	e.tasks[taskKey] = task
+	e.taskStatus[taskKey] = status
 }
 
-func (e *Executor) listTasks() []*model.Task {
+func (e *Executor) listTaskStatus() []*model.TaskExecResult {
 	e.taskrw.RLock()
 	defer e.taskrw.RUnlock()
-	tasks := make([]*model.Task, 0)
-	for _, t := range e.tasks {
-		tasks = append(tasks, t.Clone())
+	tasks := make([]*model.TaskExecResult, 0, len(e.taskStatus))
+	for key, t := range e.taskStatus {
+		tasks = append(tasks, &model.TaskExecResult{
+			TaskKey: key,
+			Status:  t,
+		})
 	}
 	return tasks
 }

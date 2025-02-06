@@ -130,11 +130,14 @@ func (i *Infomer) enqueueIfTaskChange(ctx context.Context, ch <-chan triggerInfo
 }
 
 func (i *Infomer) monitorChangeResult(ctx context.Context) {
-	i.indexer.SetAfterChange(func(t *model.Task) {
-		i.logger.Info("[Infomer] monitor task %s want:%s status changed: %s", t.TaskKey, t.WantRunStatus, t.Status)
+	i.indexer.SetAfterChange(func(t *model.TaskExecResult) {
+		i.logger.Info("[Infomer] monitor task %s status changed: %s", t.TaskKey, t.Status)
 
 		if err := retry.Do(func() error {
-			return i.recorder.UpdateTask(context.Background(), t)
+			return i.recorder.UpdateTask(context.Background(), &model.Task{
+				TaskKey: t.TaskKey,
+				Status:  t.Status,
+			})
 		}); err != nil {
 			i.logger.Error("[Infomer] UpdateTask(%s) failed: %v", t.TaskKey, err)
 		}
@@ -148,7 +151,7 @@ func (i *Infomer) monitorChangeResult(ctx context.Context) {
 
 type taskPair struct {
 	want *model.Task
-	real *model.Task
+	real *model.TaskExecResult
 }
 
 func (i *Infomer) loadTaskPairsThreadSafe(ctx context.Context, info triggerInfo) ([]taskPair, error) {
@@ -222,7 +225,7 @@ func (i *Infomer) loadTaskPairs(ctx context.Context, wantTaskKeys, realTaskKeys 
 		return nil, nil
 	}
 
-	realMap := lo.KeyBy(realTasks, func(t *model.Task) string { return t.TaskKey })
+	realMap := lo.KeyBy(realTasks, func(t *model.TaskExecResult) string { return t.TaskKey })
 	wantMap := lo.KeyBy(wantTasks, func(t *model.Task) string { return t.TaskKey })
 
 	taskPairs := make([]taskPair, 0, len(wantTasks))
@@ -243,15 +246,17 @@ func diff(taskPairs []taskPair) []model.Change {
 	var changes []model.Change
 
 	for _, pair := range taskPairs {
-		var changeTask *model.Task
+		change := model.Change{}
 		want, real := pair.want, pair.real
 		wantStatus, realStatus := model.TaskStatusNotExist, model.TaskStatusNotExist
 		if real != nil {
-			changeTask = real
+			change.TaskKey = real.TaskKey
+			change.TaskType = real.TaskType
 			realStatus = real.Status
 		}
 		if want != nil {
-			changeTask = want
+			change.TaskKey = want.TaskKey
+			change.TaskType = want.Type
 			wantStatus = want.WantRunStatus
 		}
 		log.Debug("[Infomer] diff, want status: %v, real: %v", wantStatus, realStatus)
@@ -262,15 +267,16 @@ func diff(taskPairs []taskPair) []model.Change {
 
 		changeType, err := model.GetChangeType(realStatus, wantStatus)
 		if err != nil {
-			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", changeTask.TaskKey, realStatus, wantStatus, err)
+			log.Error("[diff] task key: %s, realStatus: %s, wantStatus: %s, err: %v", change.TaskKey, realStatus, wantStatus, err)
 			continue
 		}
-		changes = append(changes, model.Change{
-			TaskKey:    changeTask.TaskKey,
-			TaskType:   changeTask.Type,
-			ChangeType: changeType,
-			Task:       changeTask,
-		})
+		change.ChangeType = changeType
+
+		if changeType == model.ChangeCreate {
+			change.Task = want
+		}
+
+		changes = append(changes, change)
 	}
 
 	return changes

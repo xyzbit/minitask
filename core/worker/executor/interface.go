@@ -10,7 +10,7 @@ import (
 type Interface interface {
 	// (async) Run will create a executor's instance to run task and return standard results after completion.
 	// The executor running inside the worker program recommends processing ctx.Done for gracefully exit.
-	Run(task *model.Task) error // TODO model.TaskRun
+	Run(task *model.TaskExecParam) error
 	// (async) Pause a executor, the task will stop running and become suspended, and can be run again;
 	Pause(taskKey string) error
 	// (async) Resume a executor.
@@ -20,6 +20,6 @@ type Interface interface {
 	// (async) fore Exit.
 	Exit(taskKey string) error
 
-	List(ctx context.Context) ([]*model.Task, error) // TODO model.TaskStatus
-	ChangeResult() <-chan *model.TaskResult
+	List(ctx context.Context) ([]*model.TaskExecResult, error)
+	ChangeResult() <-chan *model.TaskExecResult
 }

@@ -8,8 +8,8 @@ import (
 
 // Obtain real execution task's info
 type realTaskLoader interface {
-	List(ctx context.Context) ([]*model.Task, error)
-	ChangeResult() <-chan *model.Task
+	List(ctx context.Context) ([]*model.TaskExecResult, error)
+	ChangeResult() <-chan *model.TaskExecResult
 }
 
 type recorder interface {

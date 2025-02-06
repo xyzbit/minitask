@@ -24,12 +24,15 @@ func getExecutor(taskType string) (Interface, bool) {
 
 type Manager struct{}
 
-func (ge *Manager) List(ctx context.Context) ([]*model.Task, error) {
-	tasks := make([]*model.Task, 0)
-	for _, e := range executors {
+func (ge *Manager) List(ctx context.Context) ([]*model.TaskExecResult, error) {
+	tasks := make([]*model.TaskExecResult, 0)
+	for typ, e := range executors {
 		ts, err := e.List(ctx)
 		if err != nil {
 			return nil, err
+		}
+		for _, t := range ts {
+			t.TaskType = typ
 		}
 		tasks = append(tasks, ts...)
 	}
@@ -45,7 +48,12 @@ func (ge *Manager) ChangeHandle(change *model.Change) error {
 	var err error
 	switch change.ChangeType {
 	case model.ChangeCreate:
-		err = exe.Run(change.Task)
+		err = exe.Run(&model.TaskExecParam{
+			TaskKey: change.TaskKey,
+			BizID:   change.Task.BizID,
+			BizType: change.Task.BizType,
+			Payload: change.Task.Payload,
+		})
 	case model.ChangeDelete:
 		err = exe.Exit(change.TaskKey)
 	case model.ChangePause:
@@ -60,14 +68,15 @@ func (ge *Manager) ChangeHandle(change *model.Change) error {
 	return err
 }
 
-func (ge *Manager) ChangeResult() <-chan *model.Task {
-	resultCh := make(chan *model.Task, resultChBuffer)
-	for _, e := range executors {
-		go func(e Interface) {
+func (ge *Manager) ChangeResult() <-chan *model.TaskExecResult {
+	resultCh := make(chan *model.TaskExecResult, resultChBuffer)
+	for typ, e := range executors {
+		go func(e Interface, t string) {
 			for event := range e.ChangeResult() {
+				event.TaskType = t
 				resultCh <- event
 			}
-		}(e)
+		}(e, typ)
 	}
 	return resultCh
 }

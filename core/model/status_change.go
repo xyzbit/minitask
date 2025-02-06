@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
 	"github.com/xyzbit/minitaskx/internal/queue"
 )
 
@@ -59,7 +60,8 @@ type Change struct {
 	TaskKey    string
 	TaskType   string
 	ChangeType ChangeType
-	Task       *Task
+	// 仅在 ChangeType == ChangeCreate 时有值.
+	Task *Task
 }
 
 func (c Change) GetUniKey() Change {

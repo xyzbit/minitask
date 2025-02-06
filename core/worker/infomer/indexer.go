@@ -11,9 +11,9 @@ import (
 
 // Indexer will maintain cache of actual executor status
 type Indexer struct {
-	cache       *cache.ThreadSafeMap[*model.Task]
+	cache       *cache.ThreadSafeMap[*model.TaskExecResult]
 	loader      realTaskLoader
-	afterChange func(task *model.Task)
+	afterChange func(task *model.TaskExecResult)
 	resync      time.Duration
 }
 
@@ -32,17 +32,17 @@ func NewIndexer(
 	return i
 }
 
-func (i *Indexer) SetAfterChange(f func(task *model.Task)) {
+func (i *Indexer) SetAfterChange(f func(task *model.TaskExecResult)) {
 	i.afterChange = f
 }
 
-func (i *Indexer) ListTasks(keys []string) []*model.Task {
+func (i *Indexer) ListTasks(keys []string) []*model.TaskExecResult {
 	list := i.cache.List()
 	if len(keys) == 0 {
 		return list
 	}
 
-	ret := make([]*model.Task, 0, len(keys))
+	ret := make([]*model.TaskExecResult, 0, len(keys))
 	for _, item := range list {
 		for _, key := range keys {
 			if item.TaskKey == key {
@@ -65,7 +65,7 @@ func (i *Indexer) ListTaskKeys() []string {
 
 // monitor real task status.
 func (i *Indexer) Monitor(ctx context.Context) {
-	ch := make(chan *model.Task, 100)
+	ch := make(chan *model.TaskExecResult, 100)
 
 	// force cache refresh periodically
 	go func() {
@@ -95,7 +95,7 @@ func (i *Indexer) Monitor(ctx context.Context) {
 }
 
 func (i *Indexer) initCache() error {
-	recycleCondition := func(task *model.Task, afterSetDuration time.Duration) bool {
+	recycleCondition := func(task *model.TaskExecResult, afterSetDuration time.Duration) bool {
 		if task == nil {
 			return true
 		}
@@ -120,7 +120,7 @@ func (i *Indexer) initCache() error {
 	return nil
 }
 
-func (i *Indexer) refreshCache(ctx context.Context, ch chan *model.Task) {
+func (i *Indexer) refreshCache(ctx context.Context, ch chan *model.TaskExecResult) {
 	newTasks, err := i.loader.List(ctx)
 	if err != nil {
 		log.Error("[Infomer] List() failed: %v", err)
@@ -134,7 +134,7 @@ func (i *Indexer) refreshCache(ctx context.Context, ch chan *model.Task) {
 	}
 }
 
-func (i *Indexer) processTask(c *model.Task) {
+func (i *Indexer) processTask(c *model.TaskExecResult) {
 	if c == nil {
 		log.Error("[Infomer] received nil task")
 		return

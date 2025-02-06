@@ -23,31 +23,31 @@ type Executor struct {
 	rw    sync.RWMutex
 	ctrls map[string]*taskCtrl // task key <==> status 1: running 2: paused 3: stop
 
-	taskrw sync.RWMutex
-	tasks  map[string]*model.Task
+	taskrw     sync.RWMutex
+	taskStatus map[string]model.TaskStatus
 
-	resultChan  chan *model.Task // send external notifications when execution status changes
+	resultChan  chan *model.TaskExecResult // send external notifications when execution status changes
 	bizLogicNew func() BizLogic
 }
 
-type BizLogic func(task *model.Task) (finished bool, err error)
+type BizLogic func(params *model.TaskExecParam) (finished bool, err error)
 
 func NewExecutor(new func() BizLogic) executor.Interface {
 	return &Executor{
 		ctrls:       make(map[string]*taskCtrl, 0),
-		tasks:       make(map[string]*model.Task, 0),
-		resultChan:  make(chan *model.Task, 10),
+		taskStatus:  make(map[string]model.TaskStatus, 0),
+		resultChan:  make(chan *model.TaskExecResult, 10),
 		bizLogicNew: new,
 	}
 }
 
-func (e *Executor) Run(task *model.Task) error {
-	key := task.TaskKey
+func (e *Executor) Run(params *model.TaskExecParam) error {
+	key := params.TaskKey
 	if ctrl := e.getTaskCtrl(key); ctrl != nil {
 		return errors.New("task already running")
 	}
 
-	e.setTask(key, task)
+	e.setTaskStatus(key, model.TaskStatusRunning)
 	e.initTaskCtrl(key)
 
 	go func() {
@@ -69,7 +69,7 @@ func (e *Executor) Run(task *model.Task) error {
 				finishCh <- struct{}{}
 			}()
 
-			e.run(key)
+			e.run(params)
 		}()
 
 		ctrl := e.getTaskCtrl(key)
@@ -135,15 +135,16 @@ func (e *Executor) Resume(taskKey string) error {
 	return nil
 }
 
-func (e *Executor) List(ctx context.Context) ([]*model.Task, error) {
-	return e.listTasks(), nil
+func (e *Executor) List(ctx context.Context) ([]*model.TaskExecResult, error) {
+	return e.listTaskStatus(), nil
 }
 
-func (e *Executor) ChangeResult() <-chan *model.Task {
+func (e *Executor) ChangeResult() <-chan *model.TaskExecResult {
 	return e.resultChan
 }
 
-func (e *Executor) run(taskKey string) {
+func (e *Executor) run(params *model.TaskExecParam) {
+	taskKey := params.TaskKey
 	ctrl := e.getTaskCtrl(taskKey)
 	for {
 		select {
@@ -164,8 +165,7 @@ func (e *Executor) run(taskKey string) {
 				e.syncRunResult(taskKey)
 			}
 		default:
-			cloneTask := e.getTask(taskKey)
-			finished, err := ctrl.fn(cloneTask)
+			finished, err := ctrl.fn(params)
 			if err != nil || finished {
 				e.syncRunFinishResult(taskKey, err)
 				return
