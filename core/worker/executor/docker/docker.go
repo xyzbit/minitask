@@ -166,14 +166,14 @@ func (e *Executor) pullImage(ctx context.Context, imageUrl string) error {
 }
 
 func (e *Executor) Exit(taskKey string) error {
-	return e.stopContainer(taskKey, model.TaskStatusFailed, "force exit")
+	return e.stopContainer(taskKey)
 }
 
 func (e *Executor) Stop(taskKey string) error {
-	return e.stopContainer(taskKey, model.TaskStatusStop, "")
+	return e.stopContainer(taskKey)
 }
 
-func (e *Executor) stopContainer(taskKey string, status model.TaskStatus, msg string) error {
+func (e *Executor) stopContainer(taskKey string) error {
 	containerID, err := e.getContainerID(taskKey)
 	if err != nil {
 		return err
@@ -182,13 +182,6 @@ func (e *Executor) stopContainer(taskKey string, status model.TaskStatus, msg st
 	timeout := 0
 	if err := e.cli.ContainerStop(context.Background(), containerID, container.StopOptions{Timeout: &timeout}); err != nil {
 		return fmt.Errorf("停止容器失败: %v", err)
-	}
-
-	e.setTaskStatus(taskKey, status)
-	e.resultChan <- &model.TaskExecResult{
-		TaskKey: taskKey,
-		Status:  status,
-		Msg:     msg,
 	}
 
 	return nil
@@ -255,10 +248,15 @@ func (e *Executor) monitorContainer(taskKey, containerID string) {
 		result := &model.TaskExecResult{
 			TaskKey: taskKey,
 		}
-		log.Info("容器状态变化: %s", status.StatusCode)
-		if status.StatusCode == 0 {
+		log.Info("watch container status changed, name: %s, status: %d", taskKey, status.StatusCode)
+
+		// only monitor finshed status.
+		switch status.StatusCode {
+		case 0:
 			result.Status = model.TaskStatusSuccess
-		} else {
+		case 137:
+			result.Status = model.TaskStatusStop
+		default:
 			result.Status = model.TaskStatusFailed
 			result.Msg = fmt.Sprintf("容器退出码: %d", status.StatusCode)
 		}
@@ -275,7 +273,7 @@ type containerStatus struct {
 }
 
 func (e *Executor) listByOrigin(ctx context.Context) ([]*containerStatus, error) {
-	args := filters.Args{}
+	args := filters.NewArgs()
 	args.Add("label", "created_by_minitaskx=true")
 	containers, err := e.cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
@@ -327,6 +325,7 @@ func (e *Executor) cleanupResources(ctx context.Context, tickerDuration time.Dur
 				log.Error("cleanupResources, ContainerRemove failed: %v", err)
 				continue
 			}
+			log.Debug("[Executor] cleanupResources ContainerName: %s", taskKey)
 
 			e.taskStatusrw.Lock()
 			delete(e.taskStatus, taskKey)
@@ -337,8 +336,6 @@ func (e *Executor) cleanupResources(ctx context.Context, tickerDuration time.Dur
 			e.taskContainerrw.Unlock()
 		}
 	}
-
-	return
 }
 
 func (e *Executor) setTaskStatus(taskKey string, status model.TaskStatus) {
